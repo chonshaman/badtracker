@@ -423,7 +423,7 @@ function ActiveSessionDashboard({
         <Metric label="Profit / loss" value={formatVnd(totalDue - sessionCost)} />
       </div>
 
-      {isHost && session.status === "Active" ? (
+      {session.status === "Active" ? (
         <div className="share-card">
           <div>
             <p className="eyebrow">Share session</p>
@@ -475,9 +475,7 @@ function ActiveSessionDashboard({
                   />
                   Paid
                 </label>
-              ) : (
-                <span>{bill.paid ? "Paid" : "Unpaid"}</span>
-              )}
+              ) : null}
               {expandedPlayerId === bill.user.id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
             </div>
             {expandedPlayerId === bill.user.id ? (

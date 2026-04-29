@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { formatVnd } from "../lib/money";
 import type { Match, Session, User } from "../types";
@@ -229,9 +230,13 @@ function RecordMatchModal({
     onSubmit(opponentId, normalizeScore(score));
   }
 
+  function updateScore(value: string) {
+    setScore(formatScoreInput(value));
+  }
+
   const selectedOpponent = opponents.find((opponent) => opponent.id === opponentId);
 
-  return (
+  return createPortal(
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Record match">
       <div className="match-modal">
         <button className="close-button" onClick={onClose} aria-label="Close">
@@ -249,17 +254,18 @@ function RecordMatchModal({
         <label>
           Score
           <input
-            inputMode="numeric"
-            placeholder="21-19"
-            value={score}
-            onChange={(event) => setScore(event.target.value)}
-          />
+          inputMode="numeric"
+          placeholder="21-19"
+          value={score}
+          onChange={(event) => updateScore(event.target.value)}
+        />
         </label>
         <button className="primary-button" disabled={!opponentId || isSubmitting} onClick={handleSubmit}>
           {isSubmitting ? "Submitting..." : "Confirm match"}
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -345,6 +351,20 @@ function formatTime(value: string): string {
 function normalizeScore(score: string): string | undefined {
   const trimmed = score.trim();
   return trimmed ? trimmed.replace(/\s+/g, "") : undefined;
+}
+
+function formatScoreInput(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 4);
+  if (digits.length <= 2) return digits;
+
+  if (digits.length === 3) {
+    const firstTwo = Number(digits.slice(0, 2));
+    return firstTwo >= 21 && firstTwo <= 32
+      ? `${digits.slice(0, 2)}-${digits.slice(2)}`
+      : `${digits.slice(0, 1)}-${digits.slice(1)}`;
+  }
+
+  return `${digits.slice(0, 2)}-${digits.slice(2)}`;
 }
 
 function syncErrorGuidance(error: string): string {
