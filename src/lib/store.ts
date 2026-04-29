@@ -11,6 +11,7 @@ import {
   remoteEndSession,
   remoteJoinSession,
   remoteSetPaid,
+  remoteVerifySessionPin,
 } from "./remoteStore";
 import type { Match, RosterEntry, Session, SessionStatus, TrackerState, User } from "../types";
 
@@ -122,6 +123,13 @@ export function useTrackerStore() {
     }
   };
 
+  const refreshAfterRemoteWrite = async () => {
+    const remoteState = await loadRemoteState(defaultState.users);
+    setState(remoteState);
+    writeState(remoteState);
+    setSyncError(null);
+  };
+
   return {
     state,
     isRemoteEnabled,
@@ -129,6 +137,21 @@ export function useTrackerStore() {
     syncError,
     claimSessionAccess: (sessionId: string, role: "host" | "player" = "player") => {
       void runRemote(() => remoteClaimSessionAccess(sessionId, role));
+    },
+    verifySessionPin: async (sessionId: string, pinCode: string) => {
+      if (!isRemoteEnabled) return false;
+      pendingRemoteWrites.current += 1;
+      try {
+        const isValid = await remoteVerifySessionPin(sessionId, pinCode);
+        if (isValid) await refreshAfterRemoteWrite();
+        setSyncError(null);
+        return isValid;
+      } catch (error) {
+        setSyncError(error instanceof Error ? error.message : "Unable to verify session PIN.");
+        return false;
+      } finally {
+        pendingRemoteWrites.current = Math.max(0, pendingRemoteWrites.current - 1);
+      }
     },
     addUser: (user: User) => {
       commit((current) =>

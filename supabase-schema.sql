@@ -8,6 +8,7 @@ create table if not exists users (
 create table if not exists sessions (
   id text primary key,
   slug text not null,
+  host_user_id uuid default auth.uid() references auth.users(id) on delete set null,
   name text,
   pin_code text,
   date text not null,
@@ -22,6 +23,7 @@ create table if not exists sessions (
   ended_at timestamptz
 );
 
+alter table sessions add column if not exists host_user_id uuid default auth.uid() references auth.users(id) on delete set null;
 alter table sessions add column if not exists name text;
 alter table sessions add column if not exists pin_code text;
 
@@ -75,16 +77,18 @@ drop policy if exists "Authenticated users can create sessions" on sessions;
 drop policy if exists "Hosts can update their sessions" on sessions;
 drop policy if exists "Hosts can delete their sessions" on sessions;
 create policy "Users can view sessions they are part of" on sessions for select using (
-  exists (
+  host_user_id = auth.uid()
+  or exists (
     select 1
     from session_participants
     where session_participants.session_id = sessions.id
       and session_participants.user_id = auth.uid()
   )
 );
-create policy "Authenticated users can create sessions" on sessions for insert with check (auth.uid() is not null);
+create policy "Authenticated users can create sessions" on sessions for insert with check (host_user_id = auth.uid());
 create policy "Hosts can update their sessions" on sessions for update using (
-  exists (
+  host_user_id = auth.uid()
+  or exists (
     select 1
     from session_participants
     where session_participants.session_id = sessions.id
@@ -92,7 +96,8 @@ create policy "Hosts can update their sessions" on sessions for update using (
       and session_participants.role = 'host'
   )
 ) with check (
-  exists (
+  host_user_id = auth.uid()
+  or exists (
     select 1
     from session_participants
     where session_participants.session_id = sessions.id
@@ -101,7 +106,8 @@ create policy "Hosts can update their sessions" on sessions for update using (
   )
 );
 create policy "Hosts can delete their sessions" on sessions for delete using (
-  exists (
+  host_user_id = auth.uid()
+  or exists (
     select 1
     from session_participants
     where session_participants.session_id = sessions.id
@@ -112,12 +118,55 @@ create policy "Hosts can delete their sessions" on sessions for delete using (
 
 drop policy if exists "Users can view their own participation" on session_participants;
 drop policy if exists "Users can join sessions as themselves" on session_participants;
+drop policy if exists "Hosts can register their own participation" on session_participants;
 drop policy if exists "Users can update their own participation" on session_participants;
 drop policy if exists "Users can leave their own participation" on session_participants;
 create policy "Users can view their own participation" on session_participants for select using (user_id = auth.uid());
-create policy "Users can join sessions as themselves" on session_participants for insert with check (user_id = auth.uid());
+create policy "Hosts can register their own participation" on session_participants for insert with check (
+  user_id = auth.uid()
+  and role = 'host'
+  and exists (
+    select 1
+    from sessions
+    where sessions.id = session_participants.session_id
+      and sessions.host_user_id = auth.uid()
+  )
+);
 create policy "Users can update their own participation" on session_participants for update using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy "Users can leave their own participation" on session_participants for delete using (user_id = auth.uid());
+
+create or replace function verify_session_pin(p_session_id text, p_input_pin text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid := auth.uid();
+begin
+  if current_user_id is null then
+    return false;
+  end if;
+
+  if not exists (
+    select 1
+    from sessions
+    where id = p_session_id
+      and status = 'Active'
+      and pin_code = p_input_pin
+  ) then
+    return false;
+  end if;
+
+  insert into session_participants (session_id, user_id, role)
+  values (p_session_id, current_user_id, 'player')
+  on conflict (session_id, user_id) do nothing;
+
+  return true;
+end;
+$$;
+
+grant execute on function verify_session_pin(text, text) to anon, authenticated;
 
 drop policy if exists "Public read session roster" on session_roster;
 drop policy if exists "Public insert session roster" on session_roster;

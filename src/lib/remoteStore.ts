@@ -170,6 +170,16 @@ export async function remoteClaimSessionAccess(sessionId: string, role: "host" |
   });
 }
 
+export async function remoteVerifySessionPin(sessionId: string, pinCode: string): Promise<boolean> {
+  return request<boolean>("rpc/verify_session_pin", {
+    method: "POST",
+    body: JSON.stringify({
+      p_session_id: sessionId,
+      p_input_pin: pinCode,
+    }),
+  });
+}
+
 export async function remoteAddUser(user: User) {
   const existingUser = await findRemoteUserByName(user.name);
   if (existingUser) return existingUser;
@@ -219,7 +229,6 @@ export async function remoteCreateSession(session: Session, roster: RosterEntry[
 }
 
 export async function remoteJoinSession(user: User, sessionId: string) {
-  await remoteClaimSessionAccess(sessionId, "player");
   const remoteUser = await remoteAddUser(user);
   await request("session_roster", {
     method: "POST",
