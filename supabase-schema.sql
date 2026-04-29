@@ -37,6 +37,47 @@ create table if not exists matches (
   status text not null check (status in ('Valid'))
 );
 
+alter table users enable row level security;
+alter table sessions enable row level security;
+alter table session_roster enable row level security;
+alter table matches enable row level security;
+
+drop policy if exists "Public read users" on users;
+drop policy if exists "Public insert users" on users;
+drop policy if exists "Public update users" on users;
+drop policy if exists "Public delete users" on users;
+create policy "Public read users" on users for select using (true);
+create policy "Public insert users" on users for insert with check (true);
+create policy "Public update users" on users for update using (true) with check (true);
+create policy "Public delete users" on users for delete using (true);
+
+drop policy if exists "Public read sessions" on sessions;
+drop policy if exists "Public insert sessions" on sessions;
+drop policy if exists "Public update sessions" on sessions;
+drop policy if exists "Public delete sessions" on sessions;
+create policy "Public read sessions" on sessions for select using (true);
+create policy "Public insert sessions" on sessions for insert with check (true);
+create policy "Public update sessions" on sessions for update using (true) with check (true);
+create policy "Public delete sessions" on sessions for delete using (true);
+
+drop policy if exists "Public read session roster" on session_roster;
+drop policy if exists "Public insert session roster" on session_roster;
+drop policy if exists "Public update session roster" on session_roster;
+drop policy if exists "Public delete session roster" on session_roster;
+create policy "Public read session roster" on session_roster for select using (true);
+create policy "Public insert session roster" on session_roster for insert with check (true);
+create policy "Public update session roster" on session_roster for update using (true) with check (true);
+create policy "Public delete session roster" on session_roster for delete using (true);
+
+drop policy if exists "Public read matches" on matches;
+drop policy if exists "Public insert matches" on matches;
+drop policy if exists "Public update matches" on matches;
+drop policy if exists "Public delete matches" on matches;
+create policy "Public read matches" on matches for select using (true);
+create policy "Public insert matches" on matches for insert with check (true);
+create policy "Public update matches" on matches for update using (true) with check (true);
+create policy "Public delete matches" on matches for delete using (true);
+
 alter publication supabase_realtime add table users;
 alter publication supabase_realtime add table sessions;
 alter publication supabase_realtime add table session_roster;
