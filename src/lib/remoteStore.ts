@@ -23,6 +23,7 @@ const supabase = isRemoteEnabled
       },
     })
   : null;
+let anonymousSignInPromise: ReturnType<typeof createAnonymousSession> | null = null;
 
 type RemoteSession = {
   id: string;
@@ -57,6 +58,15 @@ type RemoteMatch = {
   status: "Valid";
 };
 
+async function createAnonymousSession() {
+  const {
+    data: { session: anonymousSession },
+    error: signInError,
+  } = await supabase!.auth.signInAnonymously();
+  if (signInError) throw signInError;
+  return anonymousSession ?? undefined;
+}
+
 async function ensureAnonymousSession() {
   if (!supabase) return undefined;
 
@@ -67,12 +77,12 @@ async function ensureAnonymousSession() {
   if (sessionError) throw sessionError;
   if (session) return session;
 
-  const {
-    data: { session: anonymousSession },
-    error: signInError,
-  } = await supabase.auth.signInAnonymously();
-  if (signInError) throw signInError;
-  return anonymousSession ?? undefined;
+  anonymousSignInPromise ??= createAnonymousSession();
+  try {
+    return await anonymousSignInPromise;
+  } finally {
+    anonymousSignInPromise = null;
+  }
 }
 
 async function headers() {

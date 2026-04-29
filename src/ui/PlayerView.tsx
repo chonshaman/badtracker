@@ -49,10 +49,10 @@ export function PlayerView({ slug, store, activeSession }: PlayerViewProps) {
     if (store.syncError) {
       return (
         <section className="player-empty">
-          <p className="eyebrow">Sync setup required</p>
+          <p className="eyebrow">Sync issue</p>
           <h1>Session unavailable.</h1>
           <p>{store.syncError}</p>
-          <p>Run the SQL in supabase-schema.sql in your Supabase project, then redeploy or refresh.</p>
+          <p>{syncErrorGuidance(store.syncError)}</p>
         </section>
       );
     }
@@ -344,6 +344,17 @@ function formatTime(value: string): string {
 function normalizeScore(score: string): string | undefined {
   const trimmed = score.trim();
   return trimmed ? trimmed.replace(/\s+/g, "") : undefined;
+}
+
+function syncErrorGuidance(error: string): string {
+  const normalized = error.toLowerCase();
+  if (normalized.includes("rate limit")) {
+    return "Supabase temporarily throttled anonymous sign-ins. Wait a minute, then refresh the shared link.";
+  }
+  if (normalized.includes("anonymous sign-ins are disabled")) {
+    return "Enable Anonymous Sign-ins in Supabase Authentication Providers, then refresh.";
+  }
+  return "If this persists, run the latest supabase-schema.sql in your Supabase project, then refresh.";
 }
 
 function uniqueUsersByName(users: User[]): User[] {
