@@ -12,13 +12,18 @@ type PlayerViewProps = {
 };
 
 export function PlayerView({ slug, store, activeSession }: PlayerViewProps) {
-  const [playerId, setPlayerId] = useState(() => localStorage.getItem(`smash-player-${slug}`) ?? "");
+  const playerStorageKey = activeSession ? `smash-player-${activeSession.id}` : `smash-player-${slug}`;
+  const [playerId, setPlayerId] = useState(() => sessionStorage.getItem(playerStorageKey) ?? "");
   const [selectedOpponentId, setSelectedOpponentId] = useState<string | null>(null);
   const [guestName, setGuestName] = useState("");
 
   useEffect(() => {
-    if (playerId) localStorage.setItem(`smash-player-${slug}`, playerId);
-  }, [playerId, slug]);
+    setPlayerId(sessionStorage.getItem(playerStorageKey) ?? "");
+  }, [playerStorageKey]);
+
+  useEffect(() => {
+    if (playerId) sessionStorage.setItem(playerStorageKey, playerId);
+  }, [playerId, playerStorageKey]);
 
   if (!activeSession) {
     if (store.isRemoteEnabled && store.isSyncing) {
