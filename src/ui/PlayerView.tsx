@@ -21,6 +21,27 @@ export function PlayerView({ slug, store, activeSession }: PlayerViewProps) {
   }, [playerId, slug]);
 
   if (!activeSession) {
+    if (store.isRemoteEnabled && store.isSyncing) {
+      return (
+        <section className="player-empty">
+          <p className="eyebrow">Loading session</p>
+          <h1>Syncing court.</h1>
+          <p>Fetching the shared session from Supabase.</p>
+        </section>
+      );
+    }
+
+    if (store.syncError) {
+      return (
+        <section className="player-empty">
+          <p className="eyebrow">Sync setup required</p>
+          <h1>Session unavailable.</h1>
+          <p>{store.syncError}</p>
+          <p>Run the SQL in supabase-schema.sql in your Supabase project, then redeploy or refresh.</p>
+        </section>
+      );
+    }
+
     return (
       <section className="player-empty">
         <p className="eyebrow">Court closed</p>
