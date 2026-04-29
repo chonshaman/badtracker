@@ -1,3 +1,4 @@
+import { createClient } from "@supabase/supabase-js";
 import type { Match, RosterEntry, Session, TrackerState, User } from "../types";
 
 const fallbackSupabaseUrl = "https://lhkonyltsafjkguctkmc.supabase.co";
@@ -13,10 +14,21 @@ const supabaseAnonKey =
 
 export const isRemoteEnabled = Boolean(supabaseUrl && supabaseAnonKey);
 
+const supabase = isRemoteEnabled
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
+      },
+    })
+  : null;
+
 type RemoteSession = {
   id: string;
   slug: string;
   name?: string | null;
+  pin_code?: string | null;
   date: string;
   court_price: number;
   shuttle_price: number;
@@ -45,10 +57,29 @@ type RemoteMatch = {
   status: "Valid";
 };
 
-function headers() {
+async function ensureAnonymousSession() {
+  if (!supabase) return undefined;
+
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (session) return session;
+
+  const {
+    data: { session: anonymousSession },
+    error: signInError,
+  } = await supabase.auth.signInAnonymously();
+  if (signInError) throw signInError;
+  return anonymousSession ?? undefined;
+}
+
+async function headers() {
+  const session = await ensureAnonymousSession();
   return {
     apikey: supabaseAnonKey ?? "",
-    authorization: `Bearer ${supabaseAnonKey ?? ""}`,
+    authorization: `Bearer ${session?.access_token ?? supabaseAnonKey ?? ""}`,
     "content-type": "application/json",
   };
 }
@@ -57,7 +88,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!supabaseUrl) throw new Error("Supabase URL is not configured.");
   const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
     ...init,
-    headers: { ...headers(), ...init?.headers },
+    headers: { ...(await headers()), ...init?.headers },
   });
   if (!response.ok) {
     throw new Error(`Supabase request failed: ${response.status} ${await response.text()}`);
@@ -104,6 +135,22 @@ export async function loadRemoteState(fallbackUsers: User[]): Promise<TrackerSta
   };
 }
 
+export async function remoteClaimSessionAccess(sessionId: string, role: "host" | "player") {
+  const session = await ensureAnonymousSession();
+  const userId = session?.user.id;
+  if (!userId) throw new Error("Unable to create anonymous session.");
+
+  await request("session_participants", {
+    method: "POST",
+    headers: { Prefer: "resolution=ignore-duplicates" },
+    body: JSON.stringify({
+      session_id: sessionId,
+      user_id: userId,
+      role,
+    }),
+  });
+}
+
 export async function remoteAddUser(user: User) {
   const existingUser = await findRemoteUserByName(user.name);
   if (existingUser) return existingUser;
@@ -142,6 +189,7 @@ export async function remoteCreateSession(session: Session, roster: RosterEntry[
       body: JSON.stringify(toRemoteSession(session, false)),
     });
   }
+  await remoteClaimSessionAccess(session.id, "host");
   if (roster.length > 0) {
     await request("session_roster", {
       method: "POST",
@@ -152,6 +200,7 @@ export async function remoteCreateSession(session: Session, roster: RosterEntry[
 }
 
 export async function remoteJoinSession(user: User, sessionId: string) {
+  await remoteClaimSessionAccess(sessionId, "player");
   const remoteUser = await remoteAddUser(user);
   await request("session_roster", {
     method: "POST",
@@ -199,6 +248,7 @@ function fromRemoteSession(session: RemoteSession): Session {
     id: session.id,
     slug: session.slug,
     name: session.name ?? undefined,
+    pinCode: session.pin_code ?? undefined,
     date: session.date,
     courtPrice: session.court_price,
     shuttlePrice: session.shuttle_price,
@@ -217,6 +267,7 @@ function toRemoteSession(session: Session, includeName = true): RemoteSession {
     id: session.id,
     slug: session.slug,
     name: includeName ? session.name : undefined,
+    pin_code: includeName ? session.pinCode : undefined,
     date: session.date,
     court_price: session.courtPrice,
     shuttle_price: session.shuttlePrice,
@@ -228,7 +279,10 @@ function toRemoteSession(session: Session, includeName = true): RemoteSession {
     created_at: session.createdAt,
     ended_at: session.endedAt,
   };
-  if (!includeName) delete remoteSession.name;
+  if (!includeName) {
+    delete remoteSession.name;
+    delete remoteSession.pin_code;
+  }
   return remoteSession;
 }
 
@@ -267,7 +321,7 @@ function toRemoteMatch(match: Match): RemoteMatch {
 function isMissingSessionNameColumn(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const message = error.message.toLowerCase();
-  return message.includes("name") && message.includes("column");
+  return message.includes("column") && (message.includes("name") || message.includes("pin_code"));
 }
 
 async function findRemoteUserByName(name: string): Promise<User | undefined> {

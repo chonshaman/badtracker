@@ -1,4 +1,4 @@
-import { Copy, Download, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Copy, Download, Plus, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { presets } from "../data/defaults";
 import { formatVnd, parseMoneyInput } from "../lib/money";
@@ -218,6 +218,7 @@ function SessionSetup({
       id: sessionId,
       slug,
       name: trimmedSessionName || `Session ${new Date().toISOString().slice(0, 10)}`,
+      pinCode: generatePinCode(),
       date: new Date().toISOString().slice(0, 10),
       courtPrice: draft.courtPrice,
       shuttlePrice: draft.shuttlePrice,
@@ -372,6 +373,8 @@ function ActiveSessionDashboard({
   onBack: () => void;
 }) {
   const shareLink = `${window.location.origin}/${session.slug}/session/${session.id}`;
+  const shareText = session.pinCode ? `${shareLink}\nPIN: ${session.pinCode}` : shareLink;
+  const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
   const bills = playerBills({
     session,
     users: store.state.users,
@@ -417,6 +420,7 @@ function ActiveSessionDashboard({
             <p className="eyebrow">Share session</p>
             <h3>Player join link</h3>
             <p>{shareLink}</p>
+            {session.pinCode ? <div className="pin-chip">PIN {session.pinCode}</div> : null}
             <small>{store.isRemoteEnabled ? "Supabase sync enabled." : "Local mode only."}</small>
             {store.syncError ? <small>Sync issue: {store.syncError}</small> : null}
           </div>
@@ -424,7 +428,7 @@ function ActiveSessionDashboard({
             alt="Session QR code"
             src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(shareLink)}`}
           />
-          <button className="secondary-button" onClick={() => navigator.clipboard.writeText(shareLink)}>
+          <button className="secondary-button" onClick={() => navigator.clipboard.writeText(shareText)}>
             <Copy size={18} /> Copy link
           </button>
         </div>
@@ -433,20 +437,39 @@ function ActiveSessionDashboard({
       <div className="table-card">
         <h3>Leaderboard</h3>
         {bills.map((bill) => (
-          <div className="leader-row" key={bill.user.id}>
-            <div>
-              <strong>{bill.user.name}</strong>
-              <span>{bill.matchesPlayed} matches</span>
+          <div className="leaderboard-player" key={bill.user.id}>
+            <div
+              className="leader-row"
+              role="button"
+              tabIndex={0}
+              onClick={() =>
+                setExpandedPlayerId((current) => (current === bill.user.id ? null : bill.user.id))
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setExpandedPlayerId((current) => (current === bill.user.id ? null : bill.user.id));
+                }
+              }}
+            >
+              <div>
+                <strong>{bill.user.name}</strong>
+                <span>{bill.matchesPlayed} matches</span>
+              </div>
+              <strong>{formatVnd(bill.totalDue)}</strong>
+              <label className="paid-toggle" onClick={(event) => event.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  checked={bill.paid}
+                  onChange={() => store.togglePaid(session.id, bill.user.id)}
+                />
+                Paid
+              </label>
+              {expandedPlayerId === bill.user.id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
             </div>
-            <strong>{formatVnd(bill.totalDue)}</strong>
-            <label className="paid-toggle">
-              <input
-                type="checkbox"
-                checked={bill.paid}
-                onChange={() => store.togglePaid(session.id, bill.user.id)}
-              />
-              Paid
-            </label>
+            {expandedPlayerId === bill.user.id ? (
+              <PlayerMatchHistory matches={sessionMatches} state={store.state} playerId={bill.user.id} />
+            ) : null}
           </div>
         ))}
       </div>
@@ -467,7 +490,6 @@ function ActiveSessionDashboard({
               match={match}
               number={sessionMatches.length - index}
               state={store.state}
-              onDelete={() => store.deleteMatch(match.id)}
             />
           ))
         )}
@@ -480,12 +502,10 @@ function MatchLogRow({
   match,
   number,
   state,
-  onDelete,
 }: {
   match: Match;
   number: number;
   state: TrackerState;
-  onDelete: () => void;
 }) {
   const playerA = state.users.find((user) => user.id === match.playerAId)?.name ?? "Unknown";
   const playerB = state.users.find((user) => user.id === match.playerBId)?.name ?? "Unknown";
@@ -498,9 +518,54 @@ function MatchLogRow({
           {match.score ? ` (${match.score})` : ""}
         </span>
       </div>
-      <button className="icon-button" aria-label="Delete match" onClick={onDelete}>
-        <Trash2 size={18} />
-      </button>
+    </div>
+  );
+}
+
+function PlayerMatchHistory({
+  matches,
+  state,
+  playerId,
+}: {
+  matches: Match[];
+  state: TrackerState;
+  playerId: string;
+}) {
+  const player = state.users.find((user) => user.id === playerId);
+  const playerMatches = matches.filter(
+    (match) => match.playerAId === playerId || match.playerBId === playerId,
+  );
+
+  if (!player || playerMatches.length === 0) {
+    return <p className="empty-state player-history-empty">No matches recorded for this player.</p>;
+  }
+
+  return (
+    <div className="player-history">
+      {playerMatches.map((match, index) => {
+        const isPlayerA = match.playerAId === playerId;
+        const opponentId = isPlayerA ? match.playerBId : match.playerAId;
+        const opponent = state.users.find((user) => user.id === opponentId)?.name ?? "Unknown";
+        const result = matchResult(match.score, isPlayerA);
+
+        return (
+          <article className="player-history-card" key={match.id}>
+            <div className="match-card-top">
+              <strong>Match #{String(playerMatches.length - index).padStart(2, "0")}</strong>
+              <span>{formatTime(match.createdAt)}</span>
+            </div>
+            <p>
+              <span>{player.name}</span>
+              <b>{result}</b>
+              <span>{opponent}</span>
+            </p>
+            <div className="history-meta">
+              <span>Opponent: {opponent}</span>
+              <span>Score: {match.score || "No score"}</span>
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }
@@ -557,6 +622,20 @@ function formatTime(value: string): string {
 
 function sessionTitle(session: Session): string {
   return session.name?.trim() || session.date;
+}
+
+function generatePinCode(): string {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
+
+function matchResult(score: string | undefined, isPlayerA: boolean): string {
+  if (!score) return "Recorded";
+  const [firstScore, secondScore] = score.split(/[-:]/).map((value) => Number(value.trim()));
+  if (!Number.isFinite(firstScore) || !Number.isFinite(secondScore) || firstScore === secondScore) {
+    return "Recorded";
+  }
+  const playerWon = isPlayerA ? firstScore > secondScore : secondScore > firstScore;
+  return playerWon ? "Won" : "Lost";
 }
 
 function uniqueUsersByName(users: User[]): User[] {

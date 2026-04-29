@@ -23,6 +23,7 @@ export type Session = {
   id: string;
   slug: string;
   name?: string;
+  pinCode?: string;
   date: string;
   courtPrice: number;
   shuttlePrice: number;

@@ -445,6 +445,16 @@ label {
   font-weight: 800;
 }
 
+.pin-chip {
+  width: max-content;
+  margin: 2px 0 8px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 8px 12px;
+  font-weight: 900;
+}
+
 .share-card img {
   width: 112px;
   height: 112px;
@@ -464,6 +474,15 @@ label {
   border-top: 1px solid var(--line);
 }
 
+.leader-row {
+  width: 100%;
+  background: transparent;
+  color: var(--ink);
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
 .leader-row > div,
 .history-row > div,
 .match-log-row > div {
@@ -480,6 +499,61 @@ label {
 .paid-toggle input {
   width: 22px;
   min-height: 22px;
+}
+
+.player-history {
+  display: grid;
+  gap: 10px;
+  padding: 0 0 14px;
+}
+
+.player-history-card {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fffdf6;
+  padding: 14px;
+}
+
+.player-history-card p {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 14px 0 10px;
+  font-weight: 900;
+}
+
+.player-history-card b {
+  border-radius: 999px;
+  background: #e6ffd7;
+  color: #23723f;
+  padding: 7px 10px;
+  font-size: 0.78rem;
+}
+
+.history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.history-meta span {
+  border-radius: 999px;
+  background: #f5efe3;
+  color: var(--muted);
+  padding: 7px 10px;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.player-history-empty {
+  padding-bottom: 14px;
+}
+
+.form-error {
+  margin: -4px 0 0;
+  color: var(--accent-dark);
+  font-weight: 800;
 }
 
 .icon-button,
@@ -751,8 +825,18 @@ label {
     padding-block: 10px;
   }
 
+  .leader-row > svg {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
   .paid-toggle {
     grid-column: 1 / -1;
+  }
+
+  .player-history-card p {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .opponent-grid {

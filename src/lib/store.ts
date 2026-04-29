@@ -5,6 +5,7 @@ import {
   loadRemoteState,
   remoteAddMatch,
   remoteAddUser,
+  remoteClaimSessionAccess,
   remoteCreateSession,
   remoteDeleteMatch,
   remoteEndSession,
@@ -126,6 +127,9 @@ export function useTrackerStore() {
     isRemoteEnabled,
     isSyncing,
     syncError,
+    claimSessionAccess: (sessionId: string, role: "host" | "player" = "player") => {
+      void runRemote(() => remoteClaimSessionAccess(sessionId, role));
+    },
     addUser: (user: User) => {
       commit((current) =>
         current.users.some(

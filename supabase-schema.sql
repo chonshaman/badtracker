@@ -9,6 +9,7 @@ create table if not exists sessions (
   id text primary key,
   slug text not null,
   name text,
+  pin_code text,
   date text not null,
   court_price integer not null,
   shuttle_price integer not null,
@@ -22,12 +23,22 @@ create table if not exists sessions (
 );
 
 alter table sessions add column if not exists name text;
+alter table sessions add column if not exists pin_code text;
 
 create table if not exists session_roster (
   session_id text not null references sessions(id) on delete cascade,
   user_id text not null references users(id) on delete cascade,
   paid boolean not null default false,
   primary key (session_id, user_id)
+);
+
+create table if not exists session_participants (
+  id uuid primary key default gen_random_uuid(),
+  session_id text not null references sessions(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role text not null check (role in ('host', 'player')),
+  joined_at timestamptz not null default now(),
+  unique (session_id, user_id)
 );
 
 create table if not exists matches (
@@ -43,6 +54,7 @@ create table if not exists matches (
 alter table users enable row level security;
 alter table sessions enable row level security;
 alter table session_roster enable row level security;
+alter table session_participants enable row level security;
 alter table matches enable row level security;
 
 drop policy if exists "Public read users" on users;
@@ -58,28 +70,150 @@ drop policy if exists "Public read sessions" on sessions;
 drop policy if exists "Public insert sessions" on sessions;
 drop policy if exists "Public update sessions" on sessions;
 drop policy if exists "Public delete sessions" on sessions;
-create policy "Public read sessions" on sessions for select using (true);
-create policy "Public insert sessions" on sessions for insert with check (true);
-create policy "Public update sessions" on sessions for update using (true) with check (true);
-create policy "Public delete sessions" on sessions for delete using (true);
+drop policy if exists "Users can view sessions they are part of" on sessions;
+drop policy if exists "Authenticated users can create sessions" on sessions;
+drop policy if exists "Hosts can update their sessions" on sessions;
+drop policy if exists "Hosts can delete their sessions" on sessions;
+create policy "Users can view sessions they are part of" on sessions for select using (
+  exists (
+    select 1
+    from session_participants
+    where session_participants.session_id = sessions.id
+      and session_participants.user_id = auth.uid()
+  )
+);
+create policy "Authenticated users can create sessions" on sessions for insert with check (auth.uid() is not null);
+create policy "Hosts can update their sessions" on sessions for update using (
+  exists (
+    select 1
+    from session_participants
+    where session_participants.session_id = sessions.id
+      and session_participants.user_id = auth.uid()
+      and session_participants.role = 'host'
+  )
+) with check (
+  exists (
+    select 1
+    from session_participants
+    where session_participants.session_id = sessions.id
+      and session_participants.user_id = auth.uid()
+      and session_participants.role = 'host'
+  )
+);
+create policy "Hosts can delete their sessions" on sessions for delete using (
+  exists (
+    select 1
+    from session_participants
+    where session_participants.session_id = sessions.id
+      and session_participants.user_id = auth.uid()
+      and session_participants.role = 'host'
+  )
+);
+
+drop policy if exists "Users can view their own participation" on session_participants;
+drop policy if exists "Users can join sessions as themselves" on session_participants;
+drop policy if exists "Users can update their own participation" on session_participants;
+drop policy if exists "Users can leave their own participation" on session_participants;
+create policy "Users can view their own participation" on session_participants for select using (user_id = auth.uid());
+create policy "Users can join sessions as themselves" on session_participants for insert with check (user_id = auth.uid());
+create policy "Users can update their own participation" on session_participants for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "Users can leave their own participation" on session_participants for delete using (user_id = auth.uid());
 
 drop policy if exists "Public read session roster" on session_roster;
 drop policy if exists "Public insert session roster" on session_roster;
 drop policy if exists "Public update session roster" on session_roster;
 drop policy if exists "Public delete session roster" on session_roster;
-create policy "Public read session roster" on session_roster for select using (true);
-create policy "Public insert session roster" on session_roster for insert with check (true);
-create policy "Public update session roster" on session_roster for update using (true) with check (true);
-create policy "Public delete session roster" on session_roster for delete using (true);
+drop policy if exists "Participants can read session roster" on session_roster;
+drop policy if exists "Participants can insert session roster" on session_roster;
+drop policy if exists "Participants can update session roster" on session_roster;
+drop policy if exists "Participants can delete session roster" on session_roster;
+create policy "Participants can read session roster" on session_roster for select using (
+  exists (
+    select 1
+    from session_participants
+    where session_participants.session_id = session_roster.session_id
+      and session_participants.user_id = auth.uid()
+  )
+);
+create policy "Participants can insert session roster" on session_roster for insert with check (
+  exists (
+    select 1
+    from session_participants
+    where session_participants.session_id = session_roster.session_id
+      and session_participants.user_id = auth.uid()
+  )
+);
+create policy "Participants can update session roster" on session_roster for update using (
+  exists (
+    select 1
+    from session_participants
+    where session_participants.session_id = session_roster.session_id
+      and session_participants.user_id = auth.uid()
+  )
+) with check (
+  exists (
+    select 1
+    from session_participants
+    where session_participants.session_id = session_roster.session_id
+      and session_participants.user_id = auth.uid()
+  )
+);
+create policy "Participants can delete session roster" on session_roster for delete using (
+  exists (
+    select 1
+    from session_participants
+    where session_participants.session_id = session_roster.session_id
+      and session_participants.user_id = auth.uid()
+  )
+);
 
 drop policy if exists "Public read matches" on matches;
 drop policy if exists "Public insert matches" on matches;
 drop policy if exists "Public update matches" on matches;
 drop policy if exists "Public delete matches" on matches;
-create policy "Public read matches" on matches for select using (true);
-create policy "Public insert matches" on matches for insert with check (true);
-create policy "Public update matches" on matches for update using (true) with check (true);
-create policy "Public delete matches" on matches for delete using (true);
+drop policy if exists "Participants can read matches" on matches;
+drop policy if exists "Participants can insert matches" on matches;
+drop policy if exists "Participants can update matches" on matches;
+drop policy if exists "Participants can delete matches" on matches;
+create policy "Participants can read matches" on matches for select using (
+  exists (
+    select 1
+    from session_participants
+    where session_participants.session_id = matches.session_id
+      and session_participants.user_id = auth.uid()
+  )
+);
+create policy "Participants can insert matches" on matches for insert with check (
+  exists (
+    select 1
+    from session_participants
+    where session_participants.session_id = matches.session_id
+      and session_participants.user_id = auth.uid()
+  )
+);
+create policy "Participants can update matches" on matches for update using (
+  exists (
+    select 1
+    from session_participants
+    where session_participants.session_id = matches.session_id
+      and session_participants.user_id = auth.uid()
+  )
+) with check (
+  exists (
+    select 1
+    from session_participants
+    where session_participants.session_id = matches.session_id
+      and session_participants.user_id = auth.uid()
+  )
+);
+create policy "Participants can delete matches" on matches for delete using (
+  exists (
+    select 1
+    from session_participants
+    where session_participants.session_id = matches.session_id
+      and session_participants.user_id = auth.uid()
+  )
+);
 
 do $$
 begin
@@ -102,6 +236,13 @@ begin
     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'session_roster'
   ) then
     alter publication supabase_realtime add table session_roster;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'session_participants'
+  ) then
+    alter publication supabase_realtime add table session_participants;
   end if;
 
   if not exists (

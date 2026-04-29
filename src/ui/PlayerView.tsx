@@ -13,13 +13,23 @@ type PlayerViewProps = {
 
 export function PlayerView({ slug, store, activeSession }: PlayerViewProps) {
   const playerStorageKey = activeSession ? `smash-player-${activeSession.id}` : `smash-player-${slug}`;
+  const pinStorageKey = activeSession ? `smash-pin-${activeSession.id}` : `smash-pin-${slug}`;
   const [playerId, setPlayerId] = useState(() => sessionStorage.getItem(playerStorageKey) ?? "");
+  const [pinCode, setPinCode] = useState("");
+  const [pinError, setPinError] = useState("");
+  const [isPinVerified, setIsPinVerified] = useState(() => sessionStorage.getItem(pinStorageKey) === "verified");
   const [selectedOpponentId, setSelectedOpponentId] = useState<string | null>(null);
   const [guestName, setGuestName] = useState("");
 
   useEffect(() => {
     setPlayerId(sessionStorage.getItem(playerStorageKey) ?? "");
   }, [playerStorageKey]);
+
+  useEffect(() => {
+    setIsPinVerified(sessionStorage.getItem(pinStorageKey) === "verified");
+    setPinCode("");
+    setPinError("");
+  }, [pinStorageKey]);
 
   useEffect(() => {
     if (playerId) sessionStorage.setItem(playerStorageKey, playerId);
@@ -52,6 +62,42 @@ export function PlayerView({ slug, store, activeSession }: PlayerViewProps) {
         <p className="eyebrow">Court closed</p>
         <h1>No active session.</h1>
         <p>Ask the host to start a session before recording matches.</p>
+      </section>
+    );
+  }
+
+  if (activeSession.pinCode && !isPinVerified) {
+    const verifyPin = () => {
+      if (pinCode.trim() !== activeSession.pinCode) {
+        setPinError("PIN code does not match this session.");
+        return;
+      }
+      sessionStorage.setItem(pinStorageKey, "verified");
+      setIsPinVerified(true);
+      setPinError("");
+    };
+
+    return (
+      <section className="login-card">
+        <p className="eyebrow">Player access</p>
+        <h1>Enter PIN.</h1>
+        <label>
+          Session PIN
+          <input
+            inputMode="numeric"
+            maxLength={4}
+            value={pinCode}
+            onChange={(event) => {
+              setPinCode(event.target.value.replace(/\D/g, "").slice(0, 4));
+              setPinError("");
+            }}
+            placeholder="4 digits"
+          />
+        </label>
+        {pinError ? <p className="form-error">{pinError}</p> : null}
+        <button className="primary-button" disabled={pinCode.length !== 4} onClick={verifyPin}>
+          Continue
+        </button>
       </section>
     );
   }
