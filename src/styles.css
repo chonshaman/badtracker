@@ -414,6 +414,33 @@ label {
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 0.02em;
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.primary-button:hover,
+.secondary-button:hover,
+.danger-button:hover,
+.record-button:hover {
+  transform: translateY(-2px);
+}
+
+.primary-button:active,
+.secondary-button:active,
+.danger-button:active,
+.record-button:active {
+  transform: translateY(0);
+}
+
+.primary-button:disabled:hover,
+.secondary-button:disabled:hover,
+.danger-button:disabled:hover,
+.record-button:disabled:hover {
+  transform: none;
 }
 
 .primary-button,
@@ -427,6 +454,12 @@ label {
   border: 1px solid var(--line);
   background: #fffdf6;
   color: var(--ink);
+}
+
+.secondary-button:hover {
+  border-color: rgba(23, 52, 44, 0.24);
+  background: white;
+  box-shadow: 0 14px 34px rgba(44, 34, 18, 0.12);
 }
 
 .danger-button {
@@ -932,10 +965,37 @@ label {
 .session-setup-modal {
   width: min(100%, 760px);
   align-content: start;
+  scrollbar-color: rgba(23, 52, 44, 0.24) transparent;
+  scrollbar-width: thin;
 }
 
 .session-setup-modal .section-header {
   padding-right: 54px;
+}
+
+.session-setup-modal::-webkit-scrollbar,
+.modal-backdrop::-webkit-scrollbar,
+.custom-select-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.session-setup-modal::-webkit-scrollbar-track,
+.modal-backdrop::-webkit-scrollbar-track,
+.custom-select-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.session-setup-modal::-webkit-scrollbar-thumb,
+.modal-backdrop::-webkit-scrollbar-thumb,
+.custom-select-menu::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(23, 52, 44, 0.24);
+}
+
+.modal-backdrop,
+.custom-select-menu {
+  scrollbar-color: rgba(23, 52, 44, 0.24) transparent;
+  scrollbar-width: thin;
 }
 
 .custom-select {
@@ -978,6 +1038,8 @@ label {
   background: #fffdf6;
   padding: 8px;
   box-shadow: 0 18px 42px rgba(44, 34, 18, 0.18);
+  transform-origin: top center;
+  animation: dropdown-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .custom-select-option {
@@ -1091,6 +1153,17 @@ label {
   }
 }
 
+@keyframes dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 @keyframes card-pop {
   from {
     opacity: 0;
@@ -1164,6 +1237,15 @@ label {
   .form-grid,
   .metric-grid {
     grid-template-columns: 1fr;
+  }
+
+  .session-setup-modal .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .session-setup-modal .full-span,
+  .session-setup-modal .formula-card {
+    grid-column: 1 / -1;
   }
 
   .section-header {

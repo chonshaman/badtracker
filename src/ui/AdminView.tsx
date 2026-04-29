@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
-import { ArrowLeft, ChevronDown, ChevronRight, ChevronUp, Copy, Download, Plus, Trash2, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Download, Plus, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { presets } from "../data/defaults";
 import { formatVnd, parseMoneyInput } from "../lib/money";
 import { calculateFee, maxMatches, playerBills } from "../lib/sessionMath";
@@ -309,16 +309,7 @@ function SessionSetup({
             />
           </label>
           <MoneyField label="Court price" value={draft.courtPrice} onChange={(value) => updateNumber("courtPrice", value)} />
-          <label>
-            Preset
-            <select value={selectedPreset} onChange={(event) => applyPreset(event.target.value)}>
-              {presets.map((preset) => (
-                <option key={preset.id} value={preset.id}>
-                  {preset.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <PresetDropdown value={selectedPreset} onChange={applyPreset} />
           <MoneyField label="Shuttle tube price" value={draft.shuttlePrice} onChange={(value) => updateNumber("shuttlePrice", value)} />
           <NumberField label="Shuttles per tube" value={draft.shuttlesPerTube} onChange={(value) => updateNumber("shuttlesPerTube", value)} />
           <NumberField label="Match duration" suffix="min" value={draft.matchDuration} onChange={(value) => updateNumber("matchDuration", value)} />
@@ -646,6 +637,70 @@ function MoneyField({
     <label>
       {label}
       <input inputMode="numeric" value={value ? value.toLocaleString("vi-VN") : ""} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
+function PresetDropdown({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (presetId: string) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const selectedPresetName = presets.find((preset) => preset.id === value)?.name ?? "Select preset";
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!dropdownRef.current?.contains(event.target as Node)) setIsOpen(false);
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, [isOpen]);
+
+  return (
+    <label>
+      Preset
+      <div className="custom-select" ref={dropdownRef}>
+        <button
+          type="button"
+          className="custom-select-trigger"
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+          onClick={() => setIsOpen((current) => !current)}
+        >
+          <span>{selectedPresetName}</span>
+          <ChevronDown size={18} />
+        </button>
+        {isOpen ? (
+          <div className="custom-select-menu" role="listbox" aria-label="Preset">
+            {presets.map((preset) => {
+              const isSelected = preset.id === value;
+              return (
+                <button
+                  type="button"
+                  className={isSelected ? "custom-select-option selected" : "custom-select-option"}
+                  key={preset.id}
+                  role="option"
+                  aria-selected={isSelected}
+                  onClick={() => {
+                    onChange(preset.id);
+                    setIsOpen(false);
+                  }}
+                >
+                  <span>{preset.name}</span>
+                  {isSelected ? <Check size={17} /> : null}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
     </label>
   );
 }
