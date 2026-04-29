@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { defaultState } from "../data/defaults";
 import {
   isRemoteEnabled,
@@ -36,6 +36,7 @@ export function useTrackerStore() {
   const [state, setState] = useState<TrackerState>(() => readState());
   const [isSyncing, setIsSyncing] = useState(isRemoteEnabled);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const pendingRemoteWrites = useRef(0);
 
   useEffect(() => {
     writeState(state);
@@ -65,6 +66,8 @@ export function useTrackerStore() {
     let isMounted = true;
 
     async function refreshRemoteState() {
+      if (pendingRemoteWrites.current > 0) return;
+
       try {
         const remoteState = await loadRemoteState(defaultState.users);
         if (!isMounted) return;
@@ -104,6 +107,7 @@ export function useTrackerStore() {
 
   const runRemote = async (operation: () => Promise<unknown>) => {
     if (!isRemoteEnabled) return;
+    pendingRemoteWrites.current += 1;
     try {
       await operation();
       const remoteState = await loadRemoteState(defaultState.users);
@@ -112,6 +116,8 @@ export function useTrackerStore() {
       setSyncError(null);
     } catch (error) {
       setSyncError(error instanceof Error ? error.message : "Unable to sync with Supabase.");
+    } finally {
+      pendingRemoteWrites.current = Math.max(0, pendingRemoteWrites.current - 1);
     }
   };
 
