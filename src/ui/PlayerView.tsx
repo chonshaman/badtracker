@@ -278,8 +278,6 @@ function SessionPinGate({ sessionId, store }: { sessionId: string; store: Store 
       setPinError("PIN code does not match this session.");
       return;
     }
-
-    rememberPlayerJoinedSession(sessionId);
   }
 
   return (
@@ -358,20 +356,6 @@ function syncErrorGuidance(error: string): string {
     return "Enable Anonymous Sign-ins in Supabase Authentication Providers, then refresh.";
   }
   return "If this persists, run the latest supabase-schema.sql in your Supabase project, then refresh.";
-}
-
-function rememberPlayerJoinedSession(sessionId: string) {
-  const storageKey = "smash-player-joined-sessions-v1";
-  const raw = localStorage.getItem(storageKey);
-  let sessionIds: string[] = [];
-  try {
-    sessionIds = raw ? (JSON.parse(raw) as string[]) : [];
-  } catch {
-    sessionIds = [];
-  }
-  if (!sessionIds.includes(sessionId)) {
-    localStorage.setItem(storageKey, JSON.stringify([...sessionIds, sessionId]));
-  }
 }
 
 function uniqueUsersByName(users: User[]): User[] {

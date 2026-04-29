@@ -26,13 +26,14 @@ const initialPreset = presets[0];
 export function AdminView({ slug, store }: AdminViewProps) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const hostedSessionIds = hostSessionIds(store.state);
+  const sessionRoles = participantSessionRoles(store.state);
   const activeSession = store.state.sessions.find(
-    (session) => hostedSessionIds.has(session.id) && session.slug === slug && session.status === "Active",
+    (session) => sessionRoles.has(session.id) && session.slug === slug && session.status === "Active",
   );
   const selectedSession = selectedSessionId
-    ? store.state.sessions.find((session) => hostedSessionIds.has(session.id) && session.id === selectedSessionId)
+    ? store.state.sessions.find((session) => sessionRoles.has(session.id) && session.id === selectedSessionId)
     : undefined;
+  const selectedRole = selectedSession ? sessionRoles.get(selectedSession.id) : undefined;
 
   function handleSessionCreated(sessionId: string) {
     setSelectedSessionId(sessionId);
@@ -52,6 +53,7 @@ export function AdminView({ slug, store }: AdminViewProps) {
       ) : selectedSession ? (
         <ActiveSessionDashboard
           session={selectedSession}
+          role={selectedRole ?? "player"}
           store={store}
           onBack={() => setSelectedSessionId(null)}
         />
@@ -59,7 +61,7 @@ export function AdminView({ slug, store }: AdminViewProps) {
         <SessionList
           state={store.state}
           slug={slug}
-          hostedSessionIds={hostedSessionIds}
+          sessionRoles={sessionRoles}
           onCreate={() => setIsCreating(true)}
           onSelect={setSelectedSessionId}
         />
@@ -88,18 +90,18 @@ function HeroCard({ slug, activeSession }: { slug: string; activeSession?: Sessi
 function SessionList({
   state,
   slug,
-  hostedSessionIds,
+  sessionRoles,
   onCreate,
   onSelect,
 }: {
   state: TrackerState;
   slug: string;
-  hostedSessionIds: Set<string>;
+  sessionRoles: Map<string, "host" | "player">;
   onCreate: () => void;
   onSelect: (sessionId: string) => void;
 }) {
   const sessions = state.sessions
-    .filter((session) => hostedSessionIds.has(session.id) && session.slug === slug)
+    .filter((session) => sessionRoles.has(session.id) && session.slug === slug)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return (
@@ -132,7 +134,7 @@ function SessionList({
                 </span>
               </div>
               <span className={session.status === "Active" ? "session-status active" : "session-status"}>
-                {session.status}
+                {sessionRoles.get(session.id) === "host" ? session.status : "Joined"}
               </span>
             </button>
           ))}
@@ -369,13 +371,16 @@ function SessionSetup({
 
 function ActiveSessionDashboard({
   session,
+  role,
   store,
   onBack,
 }: {
   session: Session;
+  role: "host" | "player";
   store: Store;
   onBack: () => void;
 }) {
+  const isHost = role === "host";
   const shareLink = `${window.location.origin}/${session.slug}/session/${session.id}`;
   const shareText = session.pinCode ? `${shareLink}\nPIN: ${session.pinCode}` : shareLink;
   const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
@@ -403,7 +408,7 @@ function ActiveSessionDashboard({
           <button className="secondary-button" onClick={onBack}>
             Back to sessions
           </button>
-          {session.status === "Active" ? (
+          {isHost && session.status === "Active" ? (
             <button className="danger-button" onClick={() => store.endSession(session.id)}>
               End session
             </button>
@@ -418,7 +423,7 @@ function ActiveSessionDashboard({
         <Metric label="Profit / loss" value={formatVnd(totalDue - sessionCost)} />
       </div>
 
-      {session.status === "Active" ? (
+      {isHost && session.status === "Active" ? (
         <div className="share-card">
           <div>
             <p className="eyebrow">Share session</p>
@@ -461,14 +466,18 @@ function ActiveSessionDashboard({
                 <span>{bill.matchesPlayed} matches</span>
               </div>
               <strong>{formatVnd(bill.totalDue)}</strong>
-              <label className="paid-toggle" onClick={(event) => event.stopPropagation()}>
-                <input
-                  type="checkbox"
-                  checked={bill.paid}
-                  onChange={() => store.togglePaid(session.id, bill.user.id)}
-                />
-                Paid
-              </label>
+              {isHost ? (
+                <label className="paid-toggle" onClick={(event) => event.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={bill.paid}
+                    onChange={() => store.togglePaid(session.id, bill.user.id)}
+                  />
+                  Paid
+                </label>
+              ) : (
+                <span>{bill.paid ? "Paid" : "Unpaid"}</span>
+              )}
               {expandedPlayerId === bill.user.id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
             </div>
             {expandedPlayerId === bill.user.id ? (
@@ -628,23 +637,10 @@ function sessionTitle(session: Session): string {
   return session.name?.trim() || session.date;
 }
 
-function hostSessionIds(state: TrackerState): Set<string> {
-  const playerJoinedIds = playerJoinedSessionIds();
-  return new Set(
-    state.participants
-      .filter((participant) => participant.role === "host" && !playerJoinedIds.has(participant.sessionId))
-      .map((participant) => participant.sessionId),
+function participantSessionRoles(state: TrackerState): Map<string, "host" | "player"> {
+  return new Map(
+    state.participants.map((participant) => [participant.sessionId, participant.role]),
   );
-}
-
-function playerJoinedSessionIds(): Set<string> {
-  const raw = localStorage.getItem("smash-player-joined-sessions-v1");
-  if (!raw) return new Set();
-  try {
-    return new Set(JSON.parse(raw) as string[]);
-  } catch {
-    return new Set();
-  }
 }
 
 function generatePinCode(): string {
