@@ -35,6 +35,12 @@ export function PlayerView({ slug, store, activeSession }: PlayerViewProps) {
     if (playerId) sessionStorage.setItem(playerStorageKey, playerId);
   }, [playerId, playerStorageKey]);
 
+  useEffect(() => {
+    if (activeSession && isPinVerified && !isHostParticipant(store, activeSession.id)) {
+      rememberPlayerJoinedSession(activeSession.id);
+    }
+  }, [activeSession, isPinVerified, store]);
+
   if (!activeSession) {
     if (store.isRemoteEnabled && store.isSyncing) {
       return (
@@ -73,6 +79,7 @@ export function PlayerView({ slug, store, activeSession }: PlayerViewProps) {
         return;
       }
       sessionStorage.setItem(pinStorageKey, "verified");
+      if (!isHostParticipant(store, activeSession.id)) rememberPlayerJoinedSession(activeSession.id);
       setIsPinVerified(true);
       setPinError("");
     };
@@ -355,6 +362,26 @@ function syncErrorGuidance(error: string): string {
     return "Enable Anonymous Sign-ins in Supabase Authentication Providers, then refresh.";
   }
   return "If this persists, run the latest supabase-schema.sql in your Supabase project, then refresh.";
+}
+
+function isHostParticipant(store: Store, sessionId: string): boolean {
+  return store.state.participants.some(
+    (participant) => participant.sessionId === sessionId && participant.role === "host",
+  );
+}
+
+function rememberPlayerJoinedSession(sessionId: string) {
+  const storageKey = "smash-player-joined-sessions-v1";
+  const raw = localStorage.getItem(storageKey);
+  let sessionIds: string[] = [];
+  try {
+    sessionIds = raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    sessionIds = [];
+  }
+  if (!sessionIds.includes(sessionId)) {
+    localStorage.setItem(storageKey, JSON.stringify([...sessionIds, sessionId]));
+  }
 }
 
 function uniqueUsersByName(users: User[]): User[] {

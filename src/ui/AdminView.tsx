@@ -629,11 +629,22 @@ function sessionTitle(session: Session): string {
 }
 
 function hostSessionIds(state: TrackerState): Set<string> {
+  const playerJoinedIds = playerJoinedSessionIds();
   return new Set(
     state.participants
-      .filter((participant) => participant.role === "host")
+      .filter((participant) => participant.role === "host" && !playerJoinedIds.has(participant.sessionId))
       .map((participant) => participant.sessionId),
   );
+}
+
+function playerJoinedSessionIds(): Set<string> {
+  const raw = localStorage.getItem("smash-player-joined-sessions-v1");
+  if (!raw) return new Set();
+  try {
+    return new Set(JSON.parse(raw) as string[]);
+  } catch {
+    return new Set();
+  }
 }
 
 function generatePinCode(): string {
