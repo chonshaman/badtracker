@@ -174,7 +174,7 @@ export function useTrackerStore() {
           ),
         ],
       }));
-      void runRemote(() => remoteCreateSession(session, dedupedRoster));
+      void runRemote(() => remoteCreateSession(session, dedupedRoster, state.users));
     },
     endSession: (sessionId: string) => {
       commit((current) => ({

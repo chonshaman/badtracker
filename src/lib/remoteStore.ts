@@ -81,8 +81,20 @@ export async function loadRemoteState(fallbackUsers: User[]): Promise<TrackerSta
     });
   }
 
+  const mergedUsers = mergeFallbackUsers(users, fallbackUsers, roster);
+  const missingFallbackUsers = mergedUsers.filter(
+    (user) => !users.some((existingUser) => existingUser.id === user.id),
+  );
+  if (missingFallbackUsers.length > 0) {
+    await request("users", {
+      method: "POST",
+      headers: { Prefer: "resolution=ignore-duplicates" },
+      body: JSON.stringify(missingFallbackUsers),
+    });
+  }
+
   return {
-    users: users.length ? users : fallbackUsers,
+    users: mergedUsers,
     sessions: sessions.map(fromRemoteSession),
     roster: roster.map(fromRemoteRoster),
     matches: matches.map(fromRemoteMatch),
@@ -101,7 +113,16 @@ export async function remoteAddUser(user: User) {
   return user;
 }
 
-export async function remoteCreateSession(session: Session, roster: RosterEntry[]) {
+export async function remoteCreateSession(session: Session, roster: RosterEntry[], users: User[]) {
+  const rosterUsers = users.filter((user) => roster.some((entry) => entry.userId === user.id));
+  if (rosterUsers.length > 0) {
+    await request("users", {
+      method: "POST",
+      headers: { Prefer: "resolution=ignore-duplicates" },
+      body: JSON.stringify(rosterUsers),
+    });
+  }
+
   await request(`sessions?slug=eq.${encodeURIComponent(session.slug)}&status=eq.Active`, {
     method: "PATCH",
     body: JSON.stringify({ status: "Closed", ended_at: new Date().toISOString() }),
@@ -235,4 +256,21 @@ async function findRemoteUserByName(name: string): Promise<User | undefined> {
     `users?select=*&name=ilike.${encodeURIComponent(normalizedName)}`,
   );
   return users[0];
+}
+
+function mergeFallbackUsers(
+  remoteUsers: User[],
+  fallbackUsers: User[],
+  remoteRoster: RemoteRosterEntry[],
+): User[] {
+  const usersById = new Map(remoteUsers.map((user) => [user.id, user]));
+  const rosterUserIds = new Set(remoteRoster.map((entry) => entry.user_id));
+
+  fallbackUsers.forEach((fallbackUser) => {
+    if (rosterUserIds.has(fallbackUser.id) && !usersById.has(fallbackUser.id)) {
+      usersById.set(fallbackUser.id, fallbackUser);
+    }
+  });
+
+  return Array.from(usersById.values());
 }

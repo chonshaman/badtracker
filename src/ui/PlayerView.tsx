@@ -57,6 +57,16 @@ export function PlayerView({ slug, store, activeSession }: PlayerViewProps) {
   const roster = uniqueUsersByName(store.state.users.filter((user) => rosterIds.includes(user.id)));
   const currentUser = roster.find((user) => user.id === playerId);
 
+  if (rosterIds.length > 0 && roster.length === 0) {
+    return (
+      <section className="player-empty">
+        <p className="eyebrow">Roster syncing</p>
+        <h1>Loading names.</h1>
+        <p>Refreshing the player list from Supabase. If this stays empty, recreate the session after this fix deploys.</p>
+      </section>
+    );
+  }
+
   if (!currentUser) {
     const addGuest = () => {
       const trimmed = guestName.trim();
