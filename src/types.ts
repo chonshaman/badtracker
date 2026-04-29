@@ -42,6 +42,13 @@ export type RosterEntry = {
   paid: boolean;
 };
 
+export type SessionParticipant = {
+  sessionId: string;
+  userId: string;
+  role: "host" | "player";
+  joinedAt: string;
+};
+
 export type Match = {
   id: string;
   sessionId: string;
@@ -56,6 +63,7 @@ export type TrackerState = {
   users: User[];
   sessions: Session[];
   roster: RosterEntry[];
+  participants: SessionParticipant[];
   matches: Match[];
 };
 

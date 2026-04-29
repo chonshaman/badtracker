@@ -32,5 +32,6 @@ export const defaultState: TrackerState = {
   ],
   sessions: [],
   roster: [],
+  participants: [],
   matches: [],
 };

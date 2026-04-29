@@ -183,6 +183,17 @@ export function useTrackerStore() {
             ).values(),
           ),
         ],
+        participants: [
+          ...current.participants.filter(
+            (participant) => !(participant.sessionId === session.id && participant.role === "host"),
+          ),
+          {
+            sessionId: session.id,
+            userId: "local-host",
+            role: "host",
+            joinedAt: new Date().toISOString(),
+          },
+        ],
       }));
       void runRemote(() => remoteCreateSession(session, dedupedRoster, state.users));
     },

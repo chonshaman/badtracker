@@ -26,11 +26,12 @@ const initialPreset = presets[0];
 export function AdminView({ slug, store }: AdminViewProps) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const hostedSessionIds = hostSessionIds(store.state);
   const activeSession = store.state.sessions.find(
-    (session) => session.slug === slug && session.status === "Active",
+    (session) => hostedSessionIds.has(session.id) && session.slug === slug && session.status === "Active",
   );
   const selectedSession = selectedSessionId
-    ? store.state.sessions.find((session) => session.id === selectedSessionId)
+    ? store.state.sessions.find((session) => hostedSessionIds.has(session.id) && session.id === selectedSessionId)
     : undefined;
 
   function handleSessionCreated(sessionId: string) {
@@ -58,6 +59,7 @@ export function AdminView({ slug, store }: AdminViewProps) {
         <SessionList
           state={store.state}
           slug={slug}
+          hostedSessionIds={hostedSessionIds}
           onCreate={() => setIsCreating(true)}
           onSelect={setSelectedSessionId}
         />
@@ -86,16 +88,18 @@ function HeroCard({ slug, activeSession }: { slug: string; activeSession?: Sessi
 function SessionList({
   state,
   slug,
+  hostedSessionIds,
   onCreate,
   onSelect,
 }: {
   state: TrackerState;
   slug: string;
+  hostedSessionIds: Set<string>;
   onCreate: () => void;
   onSelect: (sessionId: string) => void;
 }) {
   const sessions = state.sessions
-    .filter((session) => session.slug === slug)
+    .filter((session) => hostedSessionIds.has(session.id) && session.slug === slug)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return (
@@ -622,6 +626,14 @@ function formatTime(value: string): string {
 
 function sessionTitle(session: Session): string {
   return session.name?.trim() || session.date;
+}
+
+function hostSessionIds(state: TrackerState): Set<string> {
+  return new Set(
+    state.participants
+      .filter((participant) => participant.role === "host")
+      .map((participant) => participant.sessionId),
+  );
 }
 
 function generatePinCode(): string {

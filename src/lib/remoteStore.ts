@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import type { Match, RosterEntry, Session, TrackerState, User } from "../types";
+import type { Match, RosterEntry, Session, SessionParticipant, TrackerState, User } from "../types";
 
 const fallbackSupabaseUrl = "https://lhkonyltsafjkguctkmc.supabase.co";
 const fallbackSupabaseAnonKey = "sb_publishable_2DZhFU_EqNqIMnmWiNvm2g__D8e7-9R";
@@ -46,6 +46,13 @@ type RemoteRosterEntry = {
   session_id: string;
   user_id: string;
   paid: boolean;
+};
+
+type RemoteSessionParticipant = {
+  session_id: string;
+  user_id: string;
+  role: SessionParticipant["role"];
+  joined_at: string;
 };
 
 type RemoteMatch = {
@@ -110,10 +117,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function loadRemoteState(fallbackUsers: User[]): Promise<TrackerState> {
-  const [users, sessions, roster, matches] = await Promise.all([
+  const [users, sessions, roster, participants, matches] = await Promise.all([
     request<User[]>("users?select=*"),
     request<RemoteSession[]>("sessions?select=*"),
     request<RemoteRosterEntry[]>("session_roster?select=*"),
+    request<RemoteSessionParticipant[]>("session_participants?select=*"),
     request<RemoteMatch[]>("matches?select=*"),
   ]);
 
@@ -141,6 +149,7 @@ export async function loadRemoteState(fallbackUsers: User[]): Promise<TrackerSta
     users: mergedUsers,
     sessions: sessions.map(fromRemoteSession),
     roster: roster.map(fromRemoteRoster),
+    participants: participants.map(fromRemoteParticipant),
     matches: matches.map(fromRemoteMatch),
   };
 }
@@ -302,6 +311,15 @@ function fromRemoteRoster(entry: RemoteRosterEntry): RosterEntry {
 
 function toRemoteRoster(entry: RosterEntry): RemoteRosterEntry {
   return { session_id: entry.sessionId, user_id: entry.userId, paid: entry.paid };
+}
+
+function fromRemoteParticipant(entry: RemoteSessionParticipant): SessionParticipant {
+  return {
+    sessionId: entry.session_id,
+    userId: entry.user_id,
+    role: entry.role,
+    joinedAt: entry.joined_at,
+  };
 }
 
 function fromRemoteMatch(match: RemoteMatch): Match {
