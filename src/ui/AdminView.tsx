@@ -24,19 +24,44 @@ type SetupDraft = {
 const initialPreset = presets[0];
 
 export function AdminView({ slug, store }: AdminViewProps) {
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
   const activeSession = store.state.sessions.find(
     (session) => session.slug === slug && session.status === "Active",
   );
+  const selectedSession = selectedSessionId
+    ? store.state.sessions.find((session) => session.id === selectedSessionId)
+    : undefined;
+
+  function handleSessionCreated(sessionId: string) {
+    setSelectedSessionId(sessionId);
+    setIsCreating(false);
+  }
 
   return (
     <div className="screen-stack">
       <HeroCard slug={slug} activeSession={activeSession} />
-      {activeSession ? (
-        <ActiveSessionDashboard session={activeSession} store={store} />
+      {isCreating ? (
+        <SessionSetup
+          slug={slug}
+          store={store}
+          onCancel={() => setIsCreating(false)}
+          onSessionCreated={handleSessionCreated}
+        />
+      ) : selectedSession ? (
+        <ActiveSessionDashboard
+          session={selectedSession}
+          store={store}
+          onBack={() => setSelectedSessionId(null)}
+        />
       ) : (
-        <SessionSetup slug={slug} store={store} />
+        <SessionList
+          state={store.state}
+          slug={slug}
+          onCreate={() => setIsCreating(true)}
+          onSelect={setSelectedSessionId}
+        />
       )}
-      <SessionHistory state={store.state} slug={slug} />
     </div>
   );
 }
@@ -58,8 +83,72 @@ function HeroCard({ slug, activeSession }: { slug: string; activeSession?: Sessi
   );
 }
 
-function SessionSetup({ slug, store }: AdminViewProps) {
+function SessionList({
+  state,
+  slug,
+  onCreate,
+  onSelect,
+}: {
+  state: TrackerState;
+  slug: string;
+  onCreate: () => void;
+  onSelect: (sessionId: string) => void;
+}) {
+  const sessions = state.sessions
+    .filter((session) => session.slug === slug)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  return (
+    <section className="panel session-list-panel">
+      <div className="section-header">
+        <div>
+          <p className="eyebrow">Sessions</p>
+          <h2>All sessions</h2>
+        </div>
+        <button className="primary-button" onClick={onCreate}>
+          <Plus size={18} /> New session
+        </button>
+      </div>
+
+      {sessions.length === 0 ? (
+        <p className="empty-state">No sessions yet.</p>
+      ) : (
+        <div className="session-list">
+          {sessions.map((session) => (
+            <button
+              type="button"
+              className="session-list-row"
+              key={session.id}
+              onClick={() => onSelect(session.id)}
+            >
+              <div>
+                <strong>{sessionTitle(session)}</strong>
+                <span>
+                  {session.date} - {formatVnd(session.feePerPerson)} / match
+                </span>
+              </div>
+              <span className={session.status === "Active" ? "session-status active" : "session-status"}>
+                {session.status}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SessionSetup({
+  slug,
+  store,
+  onCancel,
+  onSessionCreated,
+}: AdminViewProps & {
+  onCancel: () => void;
+  onSessionCreated: (sessionId: string) => void;
+}) {
   const [step, setStep] = useState(1);
+  const [sessionName, setSessionName] = useState(() => `Session ${new Date().toISOString().slice(0, 10)}`);
   const [selectedPreset, setSelectedPreset] = useState(initialPreset.id);
   const [selectedUsers, setSelectedUsers] = useState<string[]>(
     uniqueUsersByName(
@@ -124,9 +213,11 @@ function SessionSetup({ slug, store }: AdminViewProps) {
   function launchSession() {
     const sessionId = `s-${crypto.randomUUID()}`;
     const uniqueSelectedUsers = uniqueUserIdsByName(selectedUsers, store.state.users);
+    const trimmedSessionName = sessionName.trim();
     const session: Session = {
       id: sessionId,
       slug,
+      name: trimmedSessionName || `Session ${new Date().toISOString().slice(0, 10)}`,
       date: new Date().toISOString().slice(0, 10),
       courtPrice: draft.courtPrice,
       shuttlePrice: draft.shuttlePrice,
@@ -143,6 +234,7 @@ function SessionSetup({ slug, store }: AdminViewProps) {
       paid: false,
     }));
     store.createSession(session, roster);
+    onSessionCreated(sessionId);
   }
 
   function removeSetupPlayer(userId: string) {
@@ -162,6 +254,14 @@ function SessionSetup({ slug, store }: AdminViewProps) {
 
       {step === 1 && (
         <div className="form-grid">
+          <label className="full-span">
+            Session name
+            <input
+              value={sessionName}
+              onChange={(event) => setSessionName(event.target.value)}
+              placeholder="Thursday night group"
+            />
+          </label>
           <label>
             Preset
             <select value={selectedPreset} onChange={(event) => applyPreset(event.target.value)}>
@@ -242,8 +342,11 @@ function SessionSetup({ slug, store }: AdminViewProps) {
       )}
 
       <div className="button-row">
-        <button className="secondary-button" disabled={step === 1} onClick={() => setStep((current) => current - 1)}>
-          Back
+        <button
+          className="secondary-button"
+          onClick={() => (step === 1 ? onCancel() : setStep((current) => current - 1))}
+        >
+          {step === 1 ? "Cancel" : "Back"}
         </button>
         {step < 3 ? (
           <button className="primary-button" onClick={() => setStep((current) => current + 1)}>
@@ -259,7 +362,15 @@ function SessionSetup({ slug, store }: AdminViewProps) {
   );
 }
 
-function ActiveSessionDashboard({ session, store }: { session: Session; store: Store }) {
+function ActiveSessionDashboard({
+  session,
+  store,
+  onBack,
+}: {
+  session: Session;
+  store: Store;
+  onBack: () => void;
+}) {
   const shareLink = `${window.location.origin}/${session.slug}/session/${session.id}`;
   const bills = playerBills({
     session,
@@ -278,12 +389,19 @@ function ActiveSessionDashboard({ session, store }: { session: Session; store: S
     <section className="panel">
       <div className="section-header">
         <div>
-          <p className="eyebrow">Active dashboard</p>
-          <h2>{session.date}</h2>
+          <p className="eyebrow">{session.status} session</p>
+          <h2>{sessionTitle(session)}</h2>
         </div>
-        <button className="danger-button" onClick={() => store.endSession(session.id)}>
-          End session
-        </button>
+        <div className="header-actions">
+          <button className="secondary-button" onClick={onBack}>
+            Back to sessions
+          </button>
+          {session.status === "Active" ? (
+            <button className="danger-button" onClick={() => store.endSession(session.id)}>
+              End session
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div className="metric-grid">
@@ -293,22 +411,24 @@ function ActiveSessionDashboard({ session, store }: { session: Session; store: S
         <Metric label="Profit / loss" value={formatVnd(totalDue - sessionCost)} />
       </div>
 
-      <div className="share-card">
-        <div>
-          <p className="eyebrow">Share session</p>
-          <h3>Player join link</h3>
-          <p>{shareLink}</p>
-          <small>{store.isRemoteEnabled ? "Supabase sync enabled." : "Local mode only."}</small>
-          {store.syncError ? <small>Sync issue: {store.syncError}</small> : null}
+      {session.status === "Active" ? (
+        <div className="share-card">
+          <div>
+            <p className="eyebrow">Share session</p>
+            <h3>Player join link</h3>
+            <p>{shareLink}</p>
+            <small>{store.isRemoteEnabled ? "Supabase sync enabled." : "Local mode only."}</small>
+            {store.syncError ? <small>Sync issue: {store.syncError}</small> : null}
+          </div>
+          <img
+            alt="Session QR code"
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(shareLink)}`}
+          />
+          <button className="secondary-button" onClick={() => navigator.clipboard.writeText(shareLink)}>
+            <Copy size={18} /> Copy link
+          </button>
         </div>
-        <img
-          alt="Session QR code"
-          src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(shareLink)}`}
-        />
-        <button className="secondary-button" onClick={() => navigator.clipboard.writeText(shareLink)}>
-          <Copy size={18} /> Copy link
-        </button>
-      </div>
+      ) : null}
 
       <div className="table-card">
         <h3>Leaderboard</h3>
@@ -385,30 +505,6 @@ function MatchLogRow({
   );
 }
 
-function SessionHistory({ state, slug }: { state: TrackerState; slug: string }) {
-  const sessions = state.sessions
-    .filter((session) => session.slug === slug)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  return (
-    <section className="panel history-panel">
-      <h2>Past sessions</h2>
-      {sessions.length === 0 ? (
-        <p className="empty-state">No sessions yet.</p>
-      ) : (
-        sessions.map((session) => (
-          <div className="history-row" key={session.id}>
-            <div>
-              <strong>{session.date}</strong>
-              <span>{session.status}</span>
-            </div>
-            <span>{formatVnd(session.feePerPerson)} / match</span>
-          </div>
-        ))
-      )}
-    </section>
-  );
-}
-
 function MoneyField({
   label,
   value,
@@ -457,6 +553,10 @@ function formatTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function sessionTitle(session: Session): string {
+  return session.name?.trim() || session.date;
 }
 
 function uniqueUsersByName(users: User[]): User[] {

@@ -8,6 +8,7 @@ create table if not exists users (
 create table if not exists sessions (
   id text primary key,
   slug text not null,
+  name text,
   date text not null,
   court_price integer not null,
   shuttle_price integer not null,
@@ -19,6 +20,8 @@ create table if not exists sessions (
   created_at timestamptz not null,
   ended_at timestamptz
 );
+
+alter table sessions add column if not exists name text;
 
 create table if not exists session_roster (
   session_id text not null references sessions(id) on delete cascade,

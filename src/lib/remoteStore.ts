@@ -16,6 +16,7 @@ export const isRemoteEnabled = Boolean(supabaseUrl && supabaseAnonKey);
 type RemoteSession = {
   id: string;
   slug: string;
+  name?: string | null;
   date: string;
   court_price: number;
   shuttle_price: number;
@@ -129,10 +130,18 @@ export async function remoteCreateSession(session: Session, roster: RosterEntry[
     method: "PATCH",
     body: JSON.stringify({ status: "Closed", ended_at: new Date().toISOString() }),
   });
-  await request("sessions", {
-    method: "POST",
-    body: JSON.stringify(toRemoteSession(session)),
-  });
+  try {
+    await request("sessions", {
+      method: "POST",
+      body: JSON.stringify(toRemoteSession(session)),
+    });
+  } catch (error) {
+    if (!isMissingSessionNameColumn(error)) throw error;
+    await request("sessions", {
+      method: "POST",
+      body: JSON.stringify(toRemoteSession(session, false)),
+    });
+  }
   if (roster.length > 0) {
     await request("session_roster", {
       method: "POST",
@@ -189,6 +198,7 @@ function fromRemoteSession(session: RemoteSession): Session {
   return {
     id: session.id,
     slug: session.slug,
+    name: session.name ?? undefined,
     date: session.date,
     courtPrice: session.court_price,
     shuttlePrice: session.shuttle_price,
@@ -202,10 +212,11 @@ function fromRemoteSession(session: RemoteSession): Session {
   };
 }
 
-function toRemoteSession(session: Session): RemoteSession {
-  return {
+function toRemoteSession(session: Session, includeName = true): RemoteSession {
+  const remoteSession: RemoteSession = {
     id: session.id,
     slug: session.slug,
+    name: includeName ? session.name : undefined,
     date: session.date,
     court_price: session.courtPrice,
     shuttle_price: session.shuttlePrice,
@@ -217,6 +228,8 @@ function toRemoteSession(session: Session): RemoteSession {
     created_at: session.createdAt,
     ended_at: session.endedAt,
   };
+  if (!includeName) delete remoteSession.name;
+  return remoteSession;
 }
 
 function fromRemoteRoster(entry: RemoteRosterEntry): RosterEntry {
@@ -249,6 +262,12 @@ function toRemoteMatch(match: Match): RemoteMatch {
     score: match.score,
     status: match.status,
   };
+}
+
+function isMissingSessionNameColumn(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return message.includes("name") && message.includes("column");
 }
 
 async function findRemoteUserByName(name: string): Promise<User | undefined> {

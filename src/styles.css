@@ -214,6 +214,7 @@ h3 {
 .section-header,
 .button-row,
 .inline-action,
+.header-actions,
 .match-card-top,
 .leader-row,
 .history-row,
@@ -246,6 +247,10 @@ h3 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.full-span {
+  grid-column: 1 / -1;
 }
 
 label {
@@ -359,6 +364,56 @@ label {
 
 .button-row {
   margin-top: 18px;
+}
+
+.header-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.session-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.session-list-row {
+  width: 100%;
+  min-height: 74px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 253, 246, 0.82);
+  color: var(--ink);
+  padding: 12px 14px;
+  text-align: left;
+}
+
+.session-list-row > div {
+  display: grid;
+  gap: 4px;
+}
+
+.session-list-row span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.session-status {
+  border-radius: 999px;
+  background: #eee2cd;
+  padding: 8px 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.session-status.active {
+  background: #d7ffe6;
+  color: #188956;
 }
 
 .table-card {
@@ -678,7 +733,14 @@ label {
   }
 
   .inline-action,
-  .button-row {
+  .button-row,
+  .session-list-row {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .header-actions {
+    width: 100%;
     display: grid;
     grid-template-columns: 1fr;
   }

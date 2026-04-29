@@ -22,6 +22,7 @@ export type User = {
 export type Session = {
   id: string;
   slug: string;
+  name?: string;
   date: string;
   courtPrice: number;
   shuttlePrice: number;
