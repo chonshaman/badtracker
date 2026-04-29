@@ -78,7 +78,33 @@ create policy "Public insert matches" on matches for insert with check (true);
 create policy "Public update matches" on matches for update using (true) with check (true);
 create policy "Public delete matches" on matches for delete using (true);
 
-alter publication supabase_realtime add table users;
-alter publication supabase_realtime add table sessions;
-alter publication supabase_realtime add table session_roster;
-alter publication supabase_realtime add table matches;
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'users'
+  ) then
+    alter publication supabase_realtime add table users;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'sessions'
+  ) then
+    alter publication supabase_realtime add table sessions;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'session_roster'
+  ) then
+    alter publication supabase_realtime add table session_roster;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'matches'
+  ) then
+    alter publication supabase_realtime add table matches;
+  end if;
+end $$;
