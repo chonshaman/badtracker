@@ -31,17 +31,23 @@ create table if not exists session_roster (
   session_id text not null references sessions(id) on delete cascade,
   user_id text not null references users(id) on delete cascade,
   paid boolean not null default false,
+  is_present boolean not null default true,
   primary key (session_id, user_id)
 );
+
+alter table session_roster add column if not exists is_present boolean not null default true;
 
 create table if not exists session_participants (
   id uuid primary key default gen_random_uuid(),
   session_id text not null references sessions(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
   role text not null check (role in ('host', 'player')),
+  is_present boolean not null default true,
   joined_at timestamptz not null default now(),
   unique (session_id, user_id)
 );
+
+alter table session_participants add column if not exists is_present boolean not null default true;
 
 create table if not exists matches (
   id text primary key,
@@ -49,9 +55,18 @@ create table if not exists matches (
   created_at timestamptz not null,
   player_a_id text not null references users(id),
   player_b_id text not null references users(id),
+  is_stake boolean not null default false,
+  winner_id text references users(id),
   score text,
-  status text not null check (status in ('Valid'))
+  status text not null check (status in ('Valid')),
+  constraint stake_winner_required check ((not is_stake) or winner_id is not null),
+  constraint stake_winner_must_be_player check (
+    winner_id is null or winner_id = player_a_id or winner_id = player_b_id
+  )
 );
+
+alter table matches add column if not exists is_stake boolean not null default false;
+alter table matches add column if not exists winner_id text references users(id);
 
 alter table users enable row level security;
 alter table sessions enable row level security;

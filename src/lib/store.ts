@@ -10,8 +10,14 @@ import {
   remoteDeleteMatch,
   remoteEndSession,
   remoteJoinSession,
+  remoteRemoveSessionPlayers,
   remoteSetPaid,
+  remoteSetPresent,
+  remoteUpdateCourtPrice,
+  remoteUpdateMatchDuration,
+  remoteUpdateTotalCourtTime,
   remoteVerifySessionPin,
+  subscribeRemoteChanges,
 } from "./remoteStore";
 import type { Match, RosterEntry, Session, SessionStatus, TrackerState, User } from "../types";
 
@@ -24,7 +30,7 @@ function readState(): TrackerState {
   if (!raw) return defaultState;
 
   try {
-    return { ...defaultState, ...JSON.parse(raw) } as TrackerState;
+    return normalizeState({ ...defaultState, ...JSON.parse(raw) } as TrackerState);
   } catch {
     return defaultState;
   }
@@ -86,10 +92,14 @@ export function useTrackerStore() {
 
     void refreshRemoteState();
     const intervalId = window.setInterval(refreshRemoteState, 1500);
+    const unsubscribeRemoteChanges = subscribeRemoteChanges(() => {
+      void refreshRemoteState();
+    });
 
     return () => {
       isMounted = false;
       window.clearInterval(intervalId);
+      unsubscribeRemoteChanges();
     };
   }, []);
 
@@ -178,7 +188,7 @@ export function useTrackerStore() {
           users: existingUser ? current.users : [...current.users, user],
           roster: hasRosterEntry
             ? current.roster
-            : [...current.roster, { sessionId, userId: rosterUserId, paid: false }],
+            : [...current.roster, { sessionId, userId: rosterUserId, paid: false, isPresent: true }],
         };
       });
       void runRemote(() => remoteJoinSession(user, sessionId));
@@ -231,6 +241,33 @@ export function useTrackerStore() {
       }));
       void runRemote(() => remoteEndSession(sessionId));
     },
+    updateCourtPrice: (sessionId: string, courtPrice: number) => {
+      commit((current) => ({
+        ...current,
+        sessions: current.sessions.map((session) =>
+          session.id === sessionId ? { ...session, courtPrice } : session,
+        ),
+      }));
+      void runRemote(() => remoteUpdateCourtPrice(sessionId, courtPrice));
+    },
+    updateMatchDuration: (sessionId: string, matchDuration: number) => {
+      commit((current) => ({
+        ...current,
+        sessions: current.sessions.map((session) =>
+          session.id === sessionId ? { ...session, matchDuration } : session,
+        ),
+      }));
+      void runRemote(() => remoteUpdateMatchDuration(sessionId, matchDuration));
+    },
+    updateTotalCourtTime: (sessionId: string, totalCourtTime: number) => {
+      commit((current) => ({
+        ...current,
+        sessions: current.sessions.map((session) =>
+          session.id === sessionId ? { ...session, totalCourtTime } : session,
+        ),
+      }));
+      void runRemote(() => remoteUpdateTotalCourtTime(sessionId, totalCourtTime));
+    },
     togglePaid: (sessionId: string, userId: string) => {
       const targetUser = state.users.find((user) => user.id === userId);
       const matchingUserIds = state.users
@@ -260,6 +297,60 @@ export function useTrackerStore() {
       }));
       void runRemote(() => remoteSetPaid(sessionId, matchingUserIds, nextPaid));
     },
+    togglePresent: (sessionId: string, userId: string) => {
+      const targetUser = state.users.find((user) => user.id === userId);
+      const matchingUserIds = state.users
+        .filter(
+          (user) =>
+            targetUser &&
+            user.name.trim().toLowerCase() === targetUser.name.trim().toLowerCase(),
+        )
+        .map((user) => user.id);
+      const currentPresent = state.roster.find(
+        (entry) => entry.sessionId === sessionId && matchingUserIds.includes(entry.userId),
+      )?.isPresent;
+      const nextPresent = !currentPresent;
+
+      commit((current) => ({
+        ...current,
+        roster: current.roster.map((entry) => {
+          const targetUser = current.users.find((user) => user.id === userId);
+          const entryUser = current.users.find((user) => user.id === entry.userId);
+          const isSameName =
+            targetUser &&
+            entryUser &&
+            targetUser.name.trim().toLowerCase() === entryUser.name.trim().toLowerCase();
+
+          return entry.sessionId === sessionId && isSameName ? { ...entry, isPresent: nextPresent } : entry;
+        }),
+      }));
+      void runRemote(() => remoteSetPresent(sessionId, matchingUserIds, nextPresent));
+    },
+    removeSessionPlayer: (sessionId: string, userId: string) => {
+      const targetUser = state.users.find((user) => user.id === userId);
+      const matchingUserIds = state.users
+        .filter(
+          (user) =>
+            targetUser &&
+            user.name.trim().toLowerCase() === targetUser.name.trim().toLowerCase(),
+        )
+        .map((user) => user.id);
+
+      commit((current) => ({
+        ...current,
+        roster: current.roster.filter((entry) => {
+          if (entry.sessionId !== sessionId) return true;
+          const targetUser = current.users.find((user) => user.id === userId);
+          const entryUser = current.users.find((user) => user.id === entry.userId);
+          const isSameName =
+            targetUser &&
+            entryUser &&
+            targetUser.name.trim().toLowerCase() === entryUser.name.trim().toLowerCase();
+          return !isSameName;
+        }),
+      }));
+      void runRemote(() => remoteRemoveSessionPlayers(sessionId, matchingUserIds));
+    },
     addMatch: (match: Match) => {
       commit((current) =>
         current.matches.some((existingMatch) => existingMatch.id === match.id)
@@ -275,6 +366,16 @@ export function useTrackerStore() {
       }));
       void runRemote(() => remoteDeleteMatch(matchId));
     },
+  };
+}
+
+function normalizeState(state: TrackerState): TrackerState {
+  return {
+    ...state,
+    roster: state.roster.map((entry) => ({
+      ...entry,
+      isPresent: entry.isPresent ?? true,
+    })),
   };
 }
 

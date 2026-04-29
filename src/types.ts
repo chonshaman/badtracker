@@ -40,6 +40,7 @@ export type RosterEntry = {
   sessionId: string;
   userId: string;
   paid: boolean;
+  isPresent: boolean;
 };
 
 export type SessionParticipant = {
@@ -55,6 +56,8 @@ export type Match = {
   createdAt: string;
   playerAId: string;
   playerBId: string;
+  isStake: boolean;
+  winnerId?: string;
   score?: string;
   status: "Valid";
 };
@@ -70,6 +73,9 @@ export type TrackerState = {
 export type PlayerBill = {
   user: User;
   userIds: string[];
+  isPresent: boolean;
+  courtShare: number;
+  shuttleFee: number;
   matchesPlayed: number;
   totalDue: number;
   paid: boolean;

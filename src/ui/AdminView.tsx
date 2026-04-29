@@ -3,7 +3,14 @@ import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Download,
 import { useEffect, useRef, useState } from "react";
 import { presets } from "../data/defaults";
 import { formatVnd, parseMoneyInput } from "../lib/money";
-import { calculateFee, maxMatches, playerBills } from "../lib/sessionMath";
+import {
+  activeRosterCount,
+  calculateFee,
+  courtSharePerPlayer,
+  maxMatches,
+  playerBills,
+  shuttleFeePerMatch,
+} from "../lib/sessionMath";
 import type { Match, RosterEntry, Session, TrackerState, User } from "../types";
 
 type Store = ReturnType<typeof import("../lib/store").useTrackerStore>;
@@ -274,6 +281,7 @@ function SessionSetup({
       sessionId,
       userId,
       paid: false,
+      isPresent: true,
     }));
     store.createSession(session, roster);
     onSessionCreated(sessionId);
@@ -416,12 +424,23 @@ function ActiveSessionDashboard({
   const shareText = session.pinCode ? `${shareLink}\nPIN: ${session.pinCode}` : shareLink;
   const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
   const [isCopyTipVisible, setIsCopyTipVisible] = useState(false);
+  const [isCourtPriceEditing, setIsCourtPriceEditing] = useState(false);
+  const [courtPriceDraft, setCourtPriceDraft] = useState(() => formatVnd(session.courtPrice));
+  const [isMatchDurationEditing, setIsMatchDurationEditing] = useState(false);
+  const [matchDurationDraft, setMatchDurationDraft] = useState(() => String(session.matchDuration));
+  const [isTotalCourtTimeEditing, setIsTotalCourtTimeEditing] = useState(false);
+  const [totalCourtTimeDraft, setTotalCourtTimeDraft] = useState(() => String(session.totalCourtTime));
+  const [isTotalMatchesEditing, setIsTotalMatchesEditing] = useState(false);
+  const [totalMatchesDraft, setTotalMatchesDraft] = useState(() => formatStatNumber(maxMatches(session)));
   const bills = playerBills({
     session,
     users: store.state.users,
     roster: store.state.roster,
     matches: store.state.matches,
   });
+  const activeCount = activeRosterCount(store.state.roster, session.id);
+  const courtShare = courtSharePerPlayer(session, store.state.roster);
+  const shuttleFee = shuttleFeePerMatch(session);
   const sessionMatches = store.state.matches
     .filter((match) => match.sessionId === session.id)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -433,6 +452,71 @@ function ActiveSessionDashboard({
     await navigator.clipboard.writeText(shareText);
     setIsCopyTipVisible(true);
     window.setTimeout(() => setIsCopyTipVisible(false), 1800);
+  }
+
+  useEffect(() => {
+    if (!isCourtPriceEditing) setCourtPriceDraft(formatVnd(session.courtPrice));
+  }, [isCourtPriceEditing, session.courtPrice]);
+
+  useEffect(() => {
+    if (!isMatchDurationEditing) setMatchDurationDraft(String(session.matchDuration));
+  }, [isMatchDurationEditing, session.matchDuration]);
+
+  useEffect(() => {
+    if (!isTotalCourtTimeEditing) setTotalCourtTimeDraft(String(session.totalCourtTime));
+  }, [isTotalCourtTimeEditing, session.totalCourtTime]);
+
+  useEffect(() => {
+    if (!isTotalMatchesEditing) setTotalMatchesDraft(formatStatNumber(maxMatches(session)));
+  }, [isTotalMatchesEditing, session]);
+
+  function submitCourtPrice() {
+    const nextCourtPrice = parseMoneyInput(courtPriceDraft);
+    if (nextCourtPrice <= 0) {
+      setCourtPriceDraft(formatVnd(session.courtPrice));
+      setIsCourtPriceEditing(false);
+      return;
+    }
+    store.updateCourtPrice(session.id, nextCourtPrice);
+    setCourtPriceDraft(formatVnd(nextCourtPrice));
+    setIsCourtPriceEditing(false);
+  }
+
+  function submitMatchDuration() {
+    const nextMatchDuration = Number(matchDurationDraft);
+    if (!Number.isFinite(nextMatchDuration) || nextMatchDuration <= 0) {
+      setMatchDurationDraft(String(session.matchDuration));
+      setIsMatchDurationEditing(false);
+      return;
+    }
+    store.updateMatchDuration(session.id, nextMatchDuration);
+    setMatchDurationDraft(String(nextMatchDuration));
+    setIsMatchDurationEditing(false);
+  }
+
+  function submitTotalCourtTime() {
+    const nextTotalCourtTime = Number(totalCourtTimeDraft);
+    if (!Number.isFinite(nextTotalCourtTime) || nextTotalCourtTime <= 0) {
+      setTotalCourtTimeDraft(String(session.totalCourtTime));
+      setIsTotalCourtTimeEditing(false);
+      return;
+    }
+    store.updateTotalCourtTime(session.id, nextTotalCourtTime);
+    setTotalCourtTimeDraft(String(nextTotalCourtTime));
+    setIsTotalCourtTimeEditing(false);
+  }
+
+  function submitTotalMatches() {
+    const nextTotalMatches = Number(totalMatchesDraft);
+    if (!Number.isFinite(nextTotalMatches) || nextTotalMatches <= 0) {
+      setTotalMatchesDraft(formatStatNumber(maxMatches(session)));
+      setIsTotalMatchesEditing(false);
+      return;
+    }
+    const nextMatchDuration = Number((session.totalCourtTime / nextTotalMatches).toFixed(2));
+    store.updateMatchDuration(session.id, nextMatchDuration);
+    setTotalMatchesDraft(formatStatNumber(nextTotalMatches));
+    setIsTotalMatchesEditing(false);
   }
 
   return (
@@ -480,9 +564,15 @@ function ActiveSessionDashboard({
       ) : null}
 
       <div className="table-card leaderboard-card">
-        <h3>Leaderboard</h3>
+        <div className="leaderboard-header">
+          <h3>Participants</h3>
+          <div className="participant-stats">
+            <span>{activeCount} present</span>
+            <span>{formatVnd(courtShare)} court share</span>
+          </div>
+        </div>
         {bills.map((bill) => (
-          <div className="leaderboard-player" key={bill.user.id}>
+          <div className={bill.isPresent ? "leaderboard-player" : "leaderboard-player not-present"} key={bill.user.id}>
             <div
               className="leader-row"
               role="button"
@@ -497,20 +587,42 @@ function ActiveSessionDashboard({
                 }
               }}
             >
-              <div>
+              <div className="leader-player-copy">
                 <strong>{bill.user.name}</strong>
-                <span>{bill.matchesPlayed} matches</span>
+                <span>
+                  {bill.isPresent ? "" : "No-show · "}
+                  {bill.matchesPlayed} matches · <strong className="leader-row-amount">{formatVnd(bill.totalDue)}</strong>
+                </span>
               </div>
-              <strong>{formatVnd(bill.totalDue)}</strong>
               {isHost ? (
-                <label className="paid-toggle" onClick={(event) => event.stopPropagation()}>
-                  <input
-                    type="checkbox"
-                    checked={bill.paid}
-                    onChange={() => store.togglePaid(session.id, bill.user.id)}
-                  />
-                  Paid
-                </label>
+                <div className="bill-toggles" onClick={(event) => event.stopPropagation()}>
+                  <label className="paid-toggle">
+                    <input
+                      type="checkbox"
+                      checked={bill.isPresent}
+                      onChange={() => store.togglePresent(session.id, bill.user.id)}
+                    />
+                    <span className="toggle-dot" aria-hidden="true" />
+                    Present
+                  </label>
+                  <label className="paid-toggle">
+                    <input
+                      type="checkbox"
+                      checked={bill.paid}
+                      onChange={() => store.togglePaid(session.id, bill.user.id)}
+                    />
+                    <span className="toggle-dot" aria-hidden="true" />
+                    Paid
+                  </label>
+                  <button
+                    type="button"
+                    className="delete-player-button"
+                    aria-label={`Delete ${bill.user.name} from session`}
+                    onClick={() => store.removeSessionPlayer(session.id, bill.user.id)}
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                </div>
               ) : null}
               {expandedPlayerId === bill.user.id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
             </div>
@@ -522,8 +634,63 @@ function ActiveSessionDashboard({
       </div>
 
       <div className="metric-grid report-stats-grid">
-        <Metric label="Fee / match / person" value={formatVnd(session.feePerPerson)} />
-        <Metric label="Matches logged" value={`${sessionMatches.length}/${Math.floor(maxMatches(session))}`} />
+        <CourtPriceMetric
+          isHost={isHost}
+          value={session.courtPrice}
+          courtShare={courtShare}
+          draft={courtPriceDraft}
+          isEditing={isCourtPriceEditing}
+          onDraftChange={setCourtPriceDraft}
+          onEdit={() => setIsCourtPriceEditing(true)}
+          onCancel={() => {
+            setCourtPriceDraft(formatVnd(session.courtPrice));
+            setIsCourtPriceEditing(false);
+          }}
+          onSubmit={submitCourtPrice}
+        />
+        <EditableNumberMetric
+          isHost={isHost}
+          label="Total matches"
+          value={maxMatches(session)}
+          draft={totalMatchesDraft}
+          isEditing={isTotalMatchesEditing}
+          onDraftChange={setTotalMatchesDraft}
+          onEdit={() => setIsTotalMatchesEditing(true)}
+          onCancel={() => {
+            setTotalMatchesDraft(formatStatNumber(maxMatches(session)));
+            setIsTotalMatchesEditing(false);
+          }}
+          onSubmit={submitTotalMatches}
+        />
+        <Metric label="Shuttle / match" value={formatVnd(shuttleFee)} />
+        <MatchDurationMetric
+          isHost={isHost}
+          value={session.matchDuration}
+          draft={matchDurationDraft}
+          isEditing={isMatchDurationEditing}
+          onDraftChange={setMatchDurationDraft}
+          onEdit={() => setIsMatchDurationEditing(true)}
+          onCancel={() => {
+            setMatchDurationDraft(String(session.matchDuration));
+            setIsMatchDurationEditing(false);
+          }}
+          onSubmit={submitMatchDuration}
+        />
+        <EditableMinuteMetric
+          isHost={isHost}
+          label="Total court time"
+          value={session.totalCourtTime}
+          draft={totalCourtTimeDraft}
+          isEditing={isTotalCourtTimeEditing}
+          onDraftChange={setTotalCourtTimeDraft}
+          onEdit={() => setIsTotalCourtTimeEditing(true)}
+          onCancel={() => {
+            setTotalCourtTimeDraft(String(session.totalCourtTime));
+            setIsTotalCourtTimeEditing(false);
+          }}
+          onSubmit={submitTotalCourtTime}
+        />
+        <Metric label="Matches logged" value={`${sessionMatches.length}/${formatStatNumber(maxMatches(session))}`} />
         <Metric label="Collected" value={formatVnd(collected)} />
         <Metric label="Profit / loss" value={formatVnd(totalDue - sessionCost)} />
       </div>
@@ -610,11 +777,10 @@ function PlayerMatchHistory({
             </div>
             <p>
               <span>{player.name}</span>
-              <b>{result}</b>
+              <b className={`match-result-${result.toLowerCase()}`}>{result}</b>
               <span>{opponent}</span>
             </p>
             <div className="history-meta">
-              <span>Opponent: {opponent}</span>
               <span>Score: {match.score || "No score"}</span>
             </div>
           </article>
@@ -727,6 +893,219 @@ function NumberField({
   );
 }
 
+function CourtPriceMetric({
+  isHost,
+  value,
+  courtShare,
+  draft,
+  isEditing,
+  onDraftChange,
+  onEdit,
+  onCancel,
+  onSubmit,
+}: {
+  isHost: boolean;
+  value: number;
+  courtShare: number;
+  draft: string;
+  isEditing: boolean;
+  onDraftChange: (value: string) => void;
+  onEdit: () => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+}) {
+  if (!isHost) {
+    return (
+      <div className="metric-card court-price-card">
+        <span>Total court money</span>
+        <strong>{formatVnd(value)}</strong>
+        <small className="metric-caption">Court share/person: {formatVnd(courtShare)}</small>
+      </div>
+    );
+  }
+
+  return (
+    <div className="metric-card court-price-card">
+      <span>Total court money</span>
+      {isEditing ? (
+        <form
+          className="court-price-editor"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
+          <input
+            autoFocus
+            inputMode="numeric"
+            value={draft}
+            onChange={(event) => onDraftChange(formatVnd(parseMoneyInput(event.target.value)))}
+            onBlur={onSubmit}
+          />
+          <button type="submit">Save</button>
+          <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={onCancel}>
+            Cancel
+          </button>
+        </form>
+      ) : (
+        <button type="button" className="court-price-display" onClick={onEdit}>
+          <span>
+            <strong>{formatVnd(value)}</strong>
+            <small className="metric-caption">Court share/person: {formatVnd(courtShare)}</small>
+          </span>
+          <small>Edit</small>
+        </button>
+      )}
+    </div>
+  );
+}
+
+function EditableNumberMetric({
+  isHost,
+  label,
+  value,
+  draft,
+  isEditing,
+  onDraftChange,
+  onEdit,
+  onCancel,
+  onSubmit,
+}: {
+  isHost: boolean;
+  label: string;
+  value: number;
+  draft: string;
+  isEditing: boolean;
+  onDraftChange: (value: string) => void;
+  onEdit: () => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+}) {
+  if (!isHost) return <Metric label={label} value={formatStatNumber(value)} />;
+
+  return (
+    <div className="metric-card court-price-card">
+      <span>{label}</span>
+      {isEditing ? (
+        <form
+          className="court-price-editor"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
+          <input
+            autoFocus
+            inputMode="decimal"
+            value={draft}
+            onChange={(event) => onDraftChange(event.target.value.replace(/[^\d.]/g, ""))}
+            onBlur={onSubmit}
+          />
+          <button type="submit">Save</button>
+          <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={onCancel}>
+            Cancel
+          </button>
+        </form>
+      ) : (
+        <button type="button" className="court-price-display" onClick={onEdit}>
+          <strong>{formatStatNumber(value)}</strong>
+          <small>Edit</small>
+        </button>
+      )}
+    </div>
+  );
+}
+
+function MatchDurationMetric({
+  isHost,
+  value,
+  draft,
+  isEditing,
+  onDraftChange,
+  onEdit,
+  onCancel,
+  onSubmit,
+}: {
+  isHost: boolean;
+  value: number;
+  draft: string;
+  isEditing: boolean;
+  onDraftChange: (value: string) => void;
+  onEdit: () => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <EditableMinuteMetric
+      isHost={isHost}
+      label="Match duration"
+      value={value}
+      draft={draft}
+      isEditing={isEditing}
+      onDraftChange={onDraftChange}
+      onEdit={onEdit}
+      onCancel={onCancel}
+      onSubmit={onSubmit}
+    />
+  );
+}
+
+function EditableMinuteMetric({
+  isHost,
+  label,
+  value,
+  draft,
+  isEditing,
+  onDraftChange,
+  onEdit,
+  onCancel,
+  onSubmit,
+}: {
+  isHost: boolean;
+  label: string;
+  value: number;
+  draft: string;
+  isEditing: boolean;
+  onDraftChange: (value: string) => void;
+  onEdit: () => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+}) {
+  if (!isHost) return <Metric label={label} value={`${formatStatNumber(value)} min`} />;
+
+  return (
+    <div className="metric-card court-price-card">
+      <span>{label}</span>
+      {isEditing ? (
+        <form
+          className="court-price-editor"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
+          <input
+            autoFocus
+            inputMode="numeric"
+            value={draft}
+            onChange={(event) => onDraftChange(event.target.value.replace(/\D/g, ""))}
+            onBlur={onSubmit}
+          />
+          <button type="submit">Save</button>
+          <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={onCancel}>
+            Cancel
+          </button>
+        </form>
+      ) : (
+        <button type="button" className="court-price-display" onClick={onEdit}>
+          <strong>{formatStatNumber(value)} min</strong>
+          <small>Edit</small>
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="metric-card">
@@ -741,6 +1120,10 @@ function formatTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatStatNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, "");
 }
 
 function sessionTitle(session: Session): string {
@@ -803,7 +1186,11 @@ function downloadSummary(session: Session, state: TrackerState) {
   context.font = "700 48px Georgia";
   context.fillText("Smash Tracker Billing", 48, 72);
   context.font = "28px Georgia";
-  context.fillText(`${session.date} - ${formatVnd(session.feePerPerson)} / match`, 48, 116);
+  context.fillText(
+    `${session.date} - ${activeRosterCount(state.roster, session.id)} active - ${formatVnd(courtSharePerPlayer(session, state.roster))} court share`,
+    48,
+    116,
+  );
 
   bills.forEach((bill, index) => {
     const y = 188 + index * 74;
@@ -813,7 +1200,7 @@ function downloadSummary(session: Session, state: TrackerState) {
     context.font = "700 30px Georgia";
     context.fillText(bill.user.name, 72, y);
     context.font = "26px Georgia";
-    context.fillText(`${bill.matchesPlayed} matches`, 420, y);
+    context.fillText(`${bill.isPresent ? "Present" : "No-show"} / ${bill.matchesPlayed} matches`, 360, y);
     context.fillText(formatVnd(bill.totalDue), 680, y);
     context.fillText(bill.paid ? "Paid" : "Unpaid", 900, y);
   });

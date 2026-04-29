@@ -1,7 +1,9 @@
-import { Check, ChevronDown, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ToggleLeft, ToggleRight, X } from "lucide-react";
 import { createPortal } from "react-dom";
+import { Link } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { formatVnd } from "../lib/money";
+import { playerBills } from "../lib/sessionMath";
 import type { Match, Session, User } from "../types";
 
 type Store = ReturnType<typeof import("../lib/store").useTrackerStore>;
@@ -142,15 +144,42 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
         (match.playerAId === currentUser.id || match.playerBId === currentUser.id),
     )
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const opponents = roster.filter((user) => user.id !== currentUser.id);
+  const activeRosterIds = store.state.roster
+    .filter((entry) => entry.sessionId === activeSession.id && entry.isPresent)
+    .map((entry) => entry.userId);
+  const opponents = roster.filter((user) => user.id !== currentUser.id && activeRosterIds.includes(user.id));
+  const myBill = playerBills({
+    session: activeSession,
+    users: store.state.users,
+    roster: store.state.roster,
+    matches: store.state.matches,
+  }).find((bill) => bill.userIds.includes(currentUser.id));
+  const courtFee = myBill?.courtShare ?? 0;
+  const shuttleFee = myBill?.shuttleFee ?? 0;
+  const totalDue = myBill?.totalDue ?? 0;
+  const currentUserIds = store.state.users
+    .filter((user) => user.name.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+    .map((user) => user.id);
+  const previousSessions = store.state.sessions
+    .filter(
+      (session) =>
+        session.id !== activeSession.id &&
+        store.state.roster.some(
+          (entry) => entry.sessionId === session.id && currentUserIds.includes(entry.userId),
+        ),
+    )
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return (
     <div className="player-screen">
-      <header className="sticky-player-header">
-        <p>Hi, {currentUser.name}</p>
-        <h1>{formatVnd(myMatches.length * activeSession.feePerPerson)}</h1>
-        <span>Matches: {myMatches.length}</span>
-      </header>
+      <PlayerDebtHeader
+        session={activeSession}
+        playerName={currentUser.name}
+        totalDue={totalDue}
+        courtFee={courtFee}
+        shuttleFee={shuttleFee}
+        matchesPlayed={myMatches.length}
+      />
 
       <section className="opponent-panel">
         <p className="eyebrow">Tap opponent to record</p>
@@ -185,19 +214,27 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
         )}
       </section>
 
+      <PreviousSessions
+        currentUserIds={currentUserIds}
+        sessions={previousSessions}
+        store={store}
+      />
+
       {selectedOpponentId && (
         <RecordMatchModal
           currentUser={currentUser}
           opponents={opponents}
           initialOpponentId={selectedOpponentId}
           onClose={() => setSelectedOpponentId(null)}
-          onSubmit={(opponentId, score) => {
+          onSubmit={(opponentId, score, isStake, winnerId) => {
             store.addMatch({
               id: `m-${crypto.randomUUID()}`,
               sessionId: activeSession.id,
               createdAt: new Date().toISOString(),
               playerAId: currentUser.id,
               playerBId: opponentId,
+              isStake,
+              winnerId,
               score,
               status: "Valid",
             });
@@ -206,6 +243,88 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
         />
       )}
     </div>
+  );
+}
+
+function PlayerDebtHeader({
+  session,
+  playerName,
+  totalDue,
+  courtFee,
+  shuttleFee,
+  matchesPlayed,
+}: {
+  session: Session;
+  playerName: string;
+  totalDue: number;
+  courtFee: number;
+  shuttleFee: number;
+  matchesPlayed: number;
+}) {
+  const previousTotalDue = useRef(totalDue);
+  const [flash, setFlash] = useState<"up" | "down" | null>(null);
+
+  useEffect(() => {
+    if (previousTotalDue.current === totalDue) return;
+    setFlash(totalDue > previousTotalDue.current ? "up" : "down");
+    previousTotalDue.current = totalDue;
+    const timeoutId = window.setTimeout(() => setFlash(null), 900);
+    return () => window.clearTimeout(timeoutId);
+  }, [totalDue]);
+
+  return (
+    <header className={`sticky-player-header debt-header ${flash ? `debt-flash-${flash}` : ""}`}>
+      <p>Hi, {playerName}</p>
+      <h1>{formatVnd(totalDue)}</h1>
+      <div className="debt-breakdown" aria-label="Debt breakdown">
+        <span>Court Fee: {formatVnd(courtFee)}</span>
+        <span>Shuttle Fee: {formatVnd(shuttleFee)}</span>
+      </div>
+      <span>Matches: {matchesPlayed}</span>
+      <Link className="session-detail-link" to={`/${session.slug}/session/${session.id}`}>
+        <span>{sessionTitle(session)}</span>
+        <ChevronRight size={18} />
+      </Link>
+    </header>
+  );
+}
+
+function PreviousSessions({
+  currentUserIds,
+  sessions,
+  store,
+}: {
+  currentUserIds: string[];
+  sessions: Session[];
+  store: Store;
+}) {
+  if (sessions.length === 0) return null;
+
+  return (
+    <section className="previous-sessions">
+      <p className="eyebrow">Previous sessions</p>
+      {sessions.map((session) => {
+        const bill = playerBills({
+          session,
+          users: store.state.users,
+          roster: store.state.roster,
+          matches: store.state.matches,
+        }).find((candidate) => candidate.userIds.some((userId) => currentUserIds.includes(userId)));
+
+        return (
+          <article className="previous-session-card" key={session.id}>
+            <div>
+              <strong>{sessionTitle(session)}</strong>
+              <span>{session.date}</span>
+            </div>
+            <div>
+              <strong>{formatVnd(bill?.totalDue ?? 0)}</strong>
+              <span>{bill?.matchesPlayed ?? 0} matches</span>
+            </div>
+          </article>
+        );
+      })}
+    </section>
   );
 }
 
@@ -220,12 +339,13 @@ function RecordMatchModal({
   opponents: User[];
   initialOpponentId: string;
   onClose: () => void;
-  onSubmit: (opponentId: string, score?: string) => void;
+  onSubmit: (opponentId: string, score: string | undefined, isStake: boolean, winnerId?: string) => void;
 }) {
   const [opponentId, setOpponentId] = useState(initialOpponentId);
   const [score, setScore] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isOpponentListOpen, setIsOpponentListOpen] = useState(false);
+  const [isStake, setIsStake] = useState(false);
   const submitLock = useRef(false);
   const opponentDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -244,9 +364,10 @@ function RecordMatchModal({
 
   function handleSubmit() {
     if (!opponentId || submitLock.current) return;
+    if (isStake && !inferredWinnerId) return;
     submitLock.current = true;
     setIsSubmitting(true);
-    onSubmit(opponentId, normalizeScore(score));
+    onSubmit(opponentId, normalizeScore(score), isStake, isStake ? inferredWinnerId : undefined);
   }
 
   function updateScore(value: string) {
@@ -254,6 +375,17 @@ function RecordMatchModal({
   }
 
   const selectedOpponent = opponents.find((opponent) => opponent.id === opponentId);
+  const scoreResult = readScoreResult(score);
+  const inferredWinnerId = scoreResult
+    ? scoreResult.playerWon
+      ? currentUser.id
+      : selectedOpponent?.id
+    : undefined;
+  const stakeCaption = scoreResult
+    ? scoreResult.playerWon
+      ? `${scoreResult.formattedScore}: ${currentUser.name} wins.`
+      : `${scoreResult.formattedScore}: ${currentUser.name} loses.`
+    : "";
 
   return createPortal(
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Record match">
@@ -313,7 +445,28 @@ function RecordMatchModal({
             onChange={(event) => updateScore(event.target.value)}
           />
         </label>
-        <button type="submit" className="primary-button" disabled={!opponentId || isSubmitting}>
+        <button
+          type="button"
+          className="stake-control"
+          aria-pressed={isStake}
+          onClick={() => setIsStake((current) => !current)}
+        >
+          <div className="stake-control-copy">
+            <span>Loser pay all (kèo độ)</span>
+            <p className={stakeCaption ? "stake-caption visible" : "stake-caption"} aria-live="polite">
+              {stakeCaption || "Score decides who pays."}
+            </p>
+          </div>
+          <span className="stake-icon-toggle" aria-hidden="true">
+            {isStake ? <ToggleRight size={34} /> : <ToggleLeft size={34} />}
+          </span>
+        </button>
+        {isStake && !scoreResult ? (
+          <p className="stake-warning">
+            Enter a score first. Example: 2119 means {currentUser.name} wins, 1721 means {currentUser.name} loses.
+          </p>
+        ) : null}
+        <button type="submit" className="primary-button" disabled={!opponentId || isSubmitting || (isStake && !scoreResult)}>
           {isSubmitting ? "Submitting..." : "Submit"}
         </button>
       </form>
@@ -448,8 +601,10 @@ function MatchCard({
 }) {
   const opponentId = match.playerAId === currentUser.id ? match.playerBId : match.playerAId;
   const opponent = users.find((user) => user.id === opponentId)?.name ?? "Unknown";
+  const isStakeWinner = match.isStake && match.winnerId === currentUser.id;
+  const isStakeLoser = match.isStake && !isStakeWinner;
   return (
-    <article className="match-card">
+    <article className={`match-card ${match.isStake ? (isStakeWinner ? "stake-win" : "stake-loss") : ""}`}>
       <div className="match-card-top">
         <strong>Match: #{String(number).padStart(2, "0")}</strong>
         <span>{formatTime(match.createdAt)}</span>
@@ -460,7 +615,11 @@ function MatchCard({
         <span>{opponent}</span>
       </p>
       {match.score ? <div className="score-pill">Score {match.score}</div> : null}
-      <small>Status: Recorded</small>
+      {match.isStake ? (
+        <small>{isStakeWinner ? "🏆 Won the stakes! Fee: 0 VND" : "🔥 Lost the stakes. Total charged: 2x"}</small>
+      ) : (
+        <small>Status: Recorded</small>
+      )}
     </article>
   );
 }
@@ -470,6 +629,10 @@ function formatTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function sessionTitle(session: Session): string {
+  return session.name?.trim() || session.date;
 }
 
 function normalizeScore(score: string): string | undefined {
@@ -489,6 +652,20 @@ function formatScoreInput(value: string): string {
   }
 
   return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+}
+
+function readScoreResult(score: string): { formattedScore: string; playerWon: boolean } | null {
+  const digits = score.replace(/\D/g, "");
+  if (digits.length !== 4) return null;
+
+  const playerScore = Number(digits.slice(0, 2));
+  const opponentScore = Number(digits.slice(2));
+  if (!Number.isFinite(playerScore) || !Number.isFinite(opponentScore) || playerScore === opponentScore) return null;
+
+  return {
+    formattedScore: `${digits.slice(0, 2)}-${digits.slice(2)}`,
+    playerWon: playerScore > opponentScore,
+  };
 }
 
 function syncErrorGuidance(error: string): string {

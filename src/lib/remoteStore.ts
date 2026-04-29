@@ -46,6 +46,7 @@ type RemoteRosterEntry = {
   session_id: string;
   user_id: string;
   paid: boolean;
+  is_present?: boolean;
 };
 
 type RemoteSessionParticipant = {
@@ -61,6 +62,8 @@ type RemoteMatch = {
   created_at: string;
   player_a_id: string;
   player_b_id: string;
+  is_stake?: boolean;
+  winner_id?: string | null;
   score?: string | null;
   status: "Valid";
 };
@@ -154,6 +157,23 @@ export async function loadRemoteState(fallbackUsers: User[]): Promise<TrackerSta
   };
 }
 
+export function subscribeRemoteChanges(onChange: () => void): () => void {
+  if (!supabase) return () => undefined;
+
+  const channel = supabase
+    .channel("smash-tracker-db")
+    .on("postgres_changes", { event: "*", schema: "public", table: "users" }, onChange)
+    .on("postgres_changes", { event: "*", schema: "public", table: "sessions" }, onChange)
+    .on("postgres_changes", { event: "*", schema: "public", table: "session_roster" }, onChange)
+    .on("postgres_changes", { event: "*", schema: "public", table: "session_participants" }, onChange)
+    .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, onChange)
+    .subscribe();
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}
+
 export async function remoteClaimSessionAccess(sessionId: string, role: "host" | "player") {
   const session = await ensureAnonymousSession();
   const userId = session?.user.id;
@@ -233,7 +253,7 @@ export async function remoteJoinSession(user: User, sessionId: string) {
   await request("session_roster", {
     method: "POST",
     headers: { Prefer: "resolution=ignore-duplicates" },
-    body: JSON.stringify(toRemoteRoster({ sessionId, userId: remoteUser.id, paid: false })),
+    body: JSON.stringify(toRemoteRoster({ sessionId, userId: remoteUser.id, paid: false, isPresent: true })),
   });
   return remoteUser;
 }
@@ -242,6 +262,27 @@ export async function remoteEndSession(sessionId: string) {
   await request(`sessions?id=eq.${encodeURIComponent(sessionId)}`, {
     method: "PATCH",
     body: JSON.stringify({ status: "Closed", ended_at: new Date().toISOString() }),
+  });
+}
+
+export async function remoteUpdateCourtPrice(sessionId: string, courtPrice: number) {
+  await request(`sessions?id=eq.${encodeURIComponent(sessionId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ court_price: courtPrice }),
+  });
+}
+
+export async function remoteUpdateMatchDuration(sessionId: string, matchDuration: number) {
+  await request(`sessions?id=eq.${encodeURIComponent(sessionId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ match_duration: matchDuration }),
+  });
+}
+
+export async function remoteUpdateTotalCourtTime(sessionId: string, totalCourtTime: number) {
+  await request(`sessions?id=eq.${encodeURIComponent(sessionId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ total_court_time: totalCourtTime }),
   });
 }
 
@@ -254,6 +295,31 @@ export async function remoteSetPaid(sessionId: string, userIds: string[], paid: 
           method: "PATCH",
           body: JSON.stringify({ paid }),
         },
+      ),
+    ),
+  );
+}
+
+export async function remoteSetPresent(sessionId: string, userIds: string[], isPresent: boolean) {
+  await Promise.all(
+    userIds.map((userId) =>
+      request(
+        `session_roster?session_id=eq.${encodeURIComponent(sessionId)}&user_id=eq.${encodeURIComponent(userId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ is_present: isPresent }),
+        },
+      ),
+    ),
+  );
+}
+
+export async function remoteRemoveSessionPlayers(sessionId: string, userIds: string[]) {
+  await Promise.all(
+    userIds.map((userId) =>
+      request(
+        `session_roster?session_id=eq.${encodeURIComponent(sessionId)}&user_id=eq.${encodeURIComponent(userId)}`,
+        { method: "DELETE" },
       ),
     ),
   );
@@ -315,11 +381,11 @@ function toRemoteSession(session: Session, includeName = true): RemoteSession {
 }
 
 function fromRemoteRoster(entry: RemoteRosterEntry): RosterEntry {
-  return { sessionId: entry.session_id, userId: entry.user_id, paid: entry.paid };
+  return { sessionId: entry.session_id, userId: entry.user_id, paid: entry.paid, isPresent: entry.is_present ?? true };
 }
 
 function toRemoteRoster(entry: RosterEntry): RemoteRosterEntry {
-  return { session_id: entry.sessionId, user_id: entry.userId, paid: entry.paid };
+  return { session_id: entry.sessionId, user_id: entry.userId, paid: entry.paid, is_present: entry.isPresent };
 }
 
 function fromRemoteParticipant(entry: RemoteSessionParticipant): SessionParticipant {
@@ -338,6 +404,8 @@ function fromRemoteMatch(match: RemoteMatch): Match {
     createdAt: match.created_at,
     playerAId: match.player_a_id,
     playerBId: match.player_b_id,
+    isStake: Boolean(match.is_stake),
+    winnerId: match.winner_id ?? undefined,
     score: match.score ?? undefined,
     status: match.status,
   };
@@ -350,6 +418,8 @@ function toRemoteMatch(match: Match): RemoteMatch {
     created_at: match.createdAt,
     player_a_id: match.playerAId,
     player_b_id: match.playerBId,
+    is_stake: match.isStake,
+    winner_id: match.winnerId,
     score: match.score,
     status: match.status,
   };

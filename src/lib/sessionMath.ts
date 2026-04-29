@@ -21,11 +21,25 @@ export function maxMatches(session: Session): number {
   return session.totalCourtTime / session.matchDuration;
 }
 
+export function shuttleFeePerMatch(session: Session): number {
+  if (session.shuttlesPerTube <= 0) return 0;
+  return session.shuttlePrice / session.shuttlesPerTube;
+}
+
+export function activeRosterCount(roster: RosterEntry[], sessionId: string): number {
+  return roster.filter((entry) => entry.sessionId === sessionId && entry.isPresent).length;
+}
+
+export function courtSharePerPlayer(session: Session, roster: RosterEntry[]): number {
+  const activeCount = activeRosterCount(roster, session.id);
+  return activeCount > 0 ? session.courtPrice / activeCount : 0;
+}
+
 export function playerBills(args: {
   session: Session;
   users: User[];
   roster: RosterEntry[];
-  matches: { playerAId: string; playerBId: string; sessionId: string }[];
+  matches: { playerAId: string; playerBId: string; sessionId: string; isStake?: boolean; winnerId?: string }[];
 }): PlayerBill[] {
   const groupedEntries = new Map<string, { user: User; entries: RosterEntry[]; userIds: string[] }>();
 
@@ -52,11 +66,29 @@ export function playerBills(args: {
           match.sessionId === args.session.id &&
           (uniqueUserIds.includes(match.playerAId) || uniqueUserIds.includes(match.playerBId)),
       ).length;
+      const isPresent = entries.some((entry) => entry.isPresent);
+      const courtShare = isPresent ? courtSharePerPlayer(args.session, args.roster) : 0;
+      const shuttleFee = args.matches.reduce((total, match) => {
+        if (
+          match.sessionId !== args.session.id ||
+          (!uniqueUserIds.includes(match.playerAId) && !uniqueUserIds.includes(match.playerBId))
+        ) {
+          return total;
+        }
+        const fee = shuttleFeePerMatch(args.session);
+        if (!match.isStake) return total + fee;
+        return match.winnerId && uniqueUserIds.includes(match.winnerId)
+          ? total
+          : total + fee * 2;
+      }, 0);
       return {
         user,
         userIds: uniqueUserIds,
+        isPresent,
+        courtShare,
+        shuttleFee,
         matchesPlayed,
-        totalDue: matchesPlayed * args.session.feePerPerson,
+        totalDue: courtShare + shuttleFee,
         paid: entries.every((entry) => entry.paid),
       };
     })
