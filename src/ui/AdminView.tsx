@@ -447,18 +447,22 @@ function SessionSetup({
                 >
                   <div className="roster-card-content">
                     <div className="roster-name-cell">
+                      <span className="setup-player-check" aria-hidden="true">
+                        {isSelected ? <Check size={16} /> : null}
+                      </span>
                       <span>{user.name}</span>
                     </div>
-                    <label className="setup-host-toggle paid-toggle" onClick={(event) => event.stopPropagation()}>
+                    <label className="setup-host-toggle setup-host-radio" onClick={(event) => event.stopPropagation()}>
                       <input
-                        type="checkbox"
+                        type="radio"
+                        name="session-host"
                         checked={hostUserIds.includes(user.id)}
                         disabled={!isSelected}
                         onChange={() =>
-                          setHostUserIds((current) => (current.includes(user.id) ? [] : [user.id]))
+                          setHostUserIds([user.id])
                         }
                       />
-                      <span className="toggle-dot" aria-hidden="true" />
+                      <span className="radio-dot" aria-hidden="true" />
                       Host
                     </label>
                   </div>
@@ -540,6 +544,7 @@ function ActiveSessionDashboard({
   const shareLink = `${window.location.origin}/${session.slug}/session/${session.id}`;
   const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
   const [isCopyTipVisible, setIsCopyTipVisible] = useState(false);
+  const [isPinCopyTipVisible, setIsPinCopyTipVisible] = useState(false);
   const [isCourtPriceEditing, setIsCourtPriceEditing] = useState(false);
   const [courtPriceDraft, setCourtPriceDraft] = useState(() => formatVnd(session.courtPrice));
   const [isMatchDurationEditing, setIsMatchDurationEditing] = useState(false);
@@ -571,6 +576,13 @@ function ActiveSessionDashboard({
     await navigator.clipboard.writeText(shareLink);
     setIsCopyTipVisible(true);
     window.setTimeout(() => setIsCopyTipVisible(false), 1800);
+  }
+
+  async function copyPinCode() {
+    if (!session.pinCode) return;
+    await navigator.clipboard.writeText(session.pinCode);
+    setIsPinCopyTipVisible(true);
+    window.setTimeout(() => setIsPinCopyTipVisible(false), 1800);
   }
 
   useEffect(() => {
@@ -691,7 +703,15 @@ function ActiveSessionDashboard({
             src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(shareLink)}`}
           />
           <div className="share-meta">
-            {session.pinCode ? <div className="pin-chip">PIN {session.pinCode}</div> : null}
+            {session.pinCode ? (
+              <div className="pin-copy-wrap">
+                {isPinCopyTipVisible ? <div className="copy-tooltip">Copied PIN</div> : null}
+                <div className="pin-chip">PIN {session.pinCode}</div>
+                <button type="button" className="pin-copy-button" onClick={copyPinCode} aria-label="Copy PIN code">
+                  <Copy size={15} />
+                </button>
+              </div>
+            ) : null}
             <small>{store.isRemoteEnabled ? "Supabase sync enabled." : "Local mode only."}</small>
             {store.syncError ? <small>Sync issue: {store.syncError}</small> : null}
           </div>

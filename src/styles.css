@@ -459,7 +459,9 @@ label {
 
 .roster-name-cell {
   min-width: 0;
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .roster-name-cell span {
@@ -467,24 +469,80 @@ label {
   font-weight: 900;
 }
 
+.setup-player-check {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  display: grid;
+  place-items: center;
+  border: 2px solid rgba(23, 52, 44, 0.2);
+  border-radius: 6px;
+  background: #fffdf6;
+  color: white;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    border-radius 180ms ease,
+    transform 220ms cubic-bezier(0.2, 0.9, 0.2, 1.35);
+}
+
+.setup-player-check svg {
+  color: white;
+  stroke: white;
+  opacity: 0;
+  transform: scale(0.35) rotate(-12deg);
+  transition:
+    opacity 150ms ease,
+    transform 220ms cubic-bezier(0.2, 0.9, 0.2, 1.35);
+}
+
+.roster-check.selected .setup-player-check {
+  border-color: #1cad63;
+  background: #1cad63;
+  border-radius: 7px;
+  box-shadow: 0 0 0 4px rgba(28, 173, 99, 0.12);
+  transform: scale(1.08);
+}
+
+.roster-check.selected .setup-player-check svg {
+  color: white;
+  stroke: white;
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+}
+
 .setup-host-toggle {
-  width: 64px;
-  min-width: 76px;
-  max-width: 76px;
-  min-height: 28px;
-  padding: 0 4px;
-  gap: 4px;
-  font-size: 0.72rem;
-}
-
-.setup-host-toggle.paid-toggle {
-  width: 76px;
-  min-width: 76px;
-  max-width: 76px;
+  width: 82px;
+  min-width: 82px;
+  max-width: 82px;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(23, 52, 44, 0.14);
+  border-radius: 999px;
+  background: #fffdf6;
+  color: var(--muted);
+  padding: 0 8px;
+  font-size: 0.76rem;
+  font-weight: 900;
+  transition:
+    border-color 180ms ease,
+    color 180ms ease,
+    opacity 180ms ease;
 }
 
-.setup-host-toggle .toggle-dot {
+.setup-host-toggle input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.setup-host-toggle .radio-dot {
   width: 18px;
   min-width: 18px;
   max-width: 18px;
@@ -492,15 +550,33 @@ label {
   min-height: 18px;
   max-height: 18px;
   flex-basis: 18px;
-}
-
-.setup-host-toggle .toggle-dot::after {
-  width: 5px;
-  height: 8px;
+  border: 2px solid rgba(23, 52, 44, 0.28);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, #1cad63 0 42%, transparent 45%),
+    #fffdf6;
+  transform: scale(1);
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease,
+    transform 220ms cubic-bezier(0.2, 0.9, 0.2, 1.35);
 }
 
 .setup-host-toggle:has(input:checked) {
+  border-color: rgba(28, 173, 99, 0.35);
   color: #23723f;
+}
+
+.setup-host-toggle:has(input:not(:checked)) .radio-dot {
+  background: #fffdf6;
+  transform: scale(0.94);
+}
+
+.setup-host-toggle:has(input:checked) .radio-dot {
+  border-color: #1cad63;
+  box-shadow: 0 0 0 4px rgba(28, 173, 99, 0.1);
+  transform: scale(1.08);
 }
 
 .setup-host-toggle:has(input:disabled) {
@@ -821,12 +897,45 @@ label {
 
 .pin-chip {
   width: max-content;
-  margin: 2px 0 8px;
+  margin: 0;
   border-radius: 999px;
   background: var(--ink);
   color: var(--paper);
   padding: 8px 12px;
   font-weight: 900;
+}
+
+.pin-copy-wrap {
+  position: relative;
+  width: max-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 8px;
+}
+
+.pin-copy-button {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(23, 52, 44, 0.14);
+  border-radius: 50%;
+  background: #fffdf6;
+  color: var(--ink);
+  padding: 0;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    transform 180ms ease;
+}
+
+.pin-copy-button:hover {
+  border-color: rgba(23, 52, 44, 0.24);
+  background: white;
+  transform: translateY(-1px);
 }
 
 .share-card img {
