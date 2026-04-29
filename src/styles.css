@@ -285,6 +285,8 @@ h3 {
 }
 
 .step-badge {
+  width: max-content;
+  margin-top: 10px;
   border-radius: 999px;
   background: #17342c;
   color: #fff8eb;
@@ -309,6 +311,26 @@ label {
   color: var(--muted);
   font-size: 0.86rem;
   font-weight: 800;
+}
+
+.input-with-suffix {
+  position: relative;
+  display: block;
+}
+
+.input-with-suffix input {
+  padding-right: 52px;
+}
+
+.input-with-suffix span {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+  pointer-events: none;
 }
 
 .formula-card,
@@ -907,6 +929,15 @@ label {
   font-size: clamp(2.4rem, 13vw, 4rem);
 }
 
+.session-setup-modal {
+  width: min(100%, 760px);
+  align-content: start;
+}
+
+.session-setup-modal .section-header {
+  padding-right: 54px;
+}
+
 .custom-select {
   position: relative;
 }
@@ -1155,6 +1186,14 @@ label {
   .session-list-row {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .session-setup-modal .button-row .primary-button {
+    order: 1;
+  }
+
+  .session-setup-modal .button-row .secondary-button {
+    order: 2;
   }
 
   .header-actions {

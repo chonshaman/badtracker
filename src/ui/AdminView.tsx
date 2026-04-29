@@ -1,4 +1,5 @@
-import { ArrowLeft, ChevronDown, ChevronRight, ChevronUp, Copy, Download, Plus, Trash2 } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ArrowLeft, ChevronDown, ChevronRight, ChevronUp, Copy, Download, Plus, Trash2, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { presets } from "../data/defaults";
 import { formatVnd, parseMoneyInput } from "../lib/money";
@@ -60,10 +61,35 @@ export function AdminView({ slug, store }: AdminViewProps) {
     runViewTransition(() => setSelectedSessionId(null));
   }
 
-  const viewKey = isCreating ? "create" : selectedSession ? `detail-${selectedSession.id}` : "list";
+  const viewKey = selectedSession ? `detail-${selectedSession.id}` : "list";
 
   return (
-    <div className={`screen-stack reports-${transitionDirection}`} key={viewKey}>
+    <>
+      <div className={`screen-stack reports-${transitionDirection}`} key={viewKey}>
+        {selectedSession ? (
+          <div className="reports-detail-view">
+            <button className="secondary-button detail-back-button" onClick={closeSession}>
+              <ArrowLeft size={18} /> Back
+            </button>
+            <ActiveSessionDashboard
+              session={selectedSession}
+              role={selectedRole ?? "player"}
+              store={store}
+            />
+          </div>
+        ) : (
+          <div className="reports-list-view">
+            <HeroCard slug={slug} activeSession={activeSession} />
+            <SessionList
+              state={store.state}
+              slug={slug}
+              sessionRoles={sessionRoles}
+              onCreate={() => setIsCreating(true)}
+              onSelect={openSession}
+            />
+          </div>
+        )}
+      </div>
       {isCreating ? (
         <SessionSetup
           slug={slug}
@@ -71,30 +97,8 @@ export function AdminView({ slug, store }: AdminViewProps) {
           onCancel={() => setIsCreating(false)}
           onSessionCreated={handleSessionCreated}
         />
-      ) : selectedSession ? (
-        <div className="reports-detail-view">
-          <button className="secondary-button detail-back-button" onClick={closeSession}>
-            <ArrowLeft size={18} /> Back
-          </button>
-          <ActiveSessionDashboard
-            session={selectedSession}
-            role={selectedRole ?? "player"}
-            store={store}
-          />
-        </div>
-      ) : (
-        <div className="reports-list-view">
-          <HeroCard slug={slug} activeSession={activeSession} />
-          <SessionList
-            state={store.state}
-            slug={slug}
-            sessionRoles={sessionRoles}
-            onCreate={() => setIsCreating(true)}
-            onSelect={openSession}
-          />
-        </div>
-      )}
-    </div>
+      ) : null}
+    </>
   );
 }
 
@@ -280,14 +284,18 @@ function SessionSetup({
     setHiddenUserIds((current) => (current.includes(userId) ? current : [...current, userId]));
   }
 
-  return (
-    <section className="panel setup-panel">
+  return createPortal(
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Create new session">
+      <section className="match-modal session-setup-modal panel setup-panel">
+        <button type="button" className="close-button" onClick={onCancel} aria-label="Close">
+          <X size={22} />
+        </button>
       <div className="section-header">
         <div>
           <p className="eyebrow">Session setup</p>
           <h2>Create new session</h2>
+          <div className="step-badge">Step {step}/3</div>
         </div>
-        <div className="step-badge">Step {step}/3</div>
       </div>
 
       {step === 1 && (
@@ -300,6 +308,7 @@ function SessionSetup({
               placeholder="Thursday night group"
             />
           </label>
+          <MoneyField label="Court price" value={draft.courtPrice} onChange={(value) => updateNumber("courtPrice", value)} />
           <label>
             Preset
             <select value={selectedPreset} onChange={(event) => applyPreset(event.target.value)}>
@@ -310,11 +319,10 @@ function SessionSetup({
               ))}
             </select>
           </label>
-          <MoneyField label="Court price" value={draft.courtPrice} onChange={(value) => updateNumber("courtPrice", value)} />
           <MoneyField label="Shuttle tube price" value={draft.shuttlePrice} onChange={(value) => updateNumber("shuttlePrice", value)} />
           <NumberField label="Shuttles per tube" value={draft.shuttlesPerTube} onChange={(value) => updateNumber("shuttlesPerTube", value)} />
-          <NumberField label="Match duration (min)" value={draft.matchDuration} onChange={(value) => updateNumber("matchDuration", value)} />
-          <NumberField label="Total court time (min)" value={draft.totalCourtTime} onChange={(value) => updateNumber("totalCourtTime", value)} />
+          <NumberField label="Match duration" suffix="min" value={draft.matchDuration} onChange={(value) => updateNumber("matchDuration", value)} />
+          <NumberField label="Total court time" suffix="min" value={draft.totalCourtTime} onChange={(value) => updateNumber("totalCourtTime", value)} />
           <MoneyField label="Fee per person override" value={draft.feePerPerson} onChange={(value) => updateNumber("feePerPerson", value)} />
           <div className="formula-card">
             <strong>{formatVnd(computedFee)}</strong>
@@ -381,22 +389,25 @@ function SessionSetup({
 
       <div className="button-row">
         <button
+          type="button"
           className="secondary-button"
           onClick={() => (step === 1 ? onCancel() : setStep((current) => current - 1))}
         >
           {step === 1 ? "Cancel" : "Back"}
         </button>
         {step < 3 ? (
-          <button className="primary-button" onClick={() => setStep((current) => current + 1)}>
+          <button type="button" className="primary-button" onClick={() => setStep((current) => current + 1)}>
             Continue
           </button>
         ) : (
-          <button className="primary-button" disabled={selectedUsers.length < 2} onClick={launchSession}>
+          <button type="button" className="primary-button" disabled={selectedUsers.length < 2} onClick={launchSession}>
             Start session
           </button>
         )}
       </div>
-    </section>
+      </section>
+    </div>,
+    document.body,
   );
 }
 
@@ -641,17 +652,22 @@ function MoneyField({
 
 function NumberField({
   label,
+  suffix,
   value,
   onChange,
 }: {
   label: string;
+  suffix?: string;
   value: number;
   onChange: (value: string) => void;
 }) {
   return (
     <label>
       {label}
-      <input type="number" min="1" value={value} onChange={(event) => onChange(event.target.value)} />
+      <span className="input-with-suffix">
+        <input type="number" min="1" value={value} onChange={(event) => onChange(event.target.value)} />
+        {suffix ? <span>{suffix}</span> : null}
+      </span>
     </label>
   );
 }
