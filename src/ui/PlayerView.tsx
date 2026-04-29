@@ -198,9 +198,9 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
       </section>
 
       <section className="card-feed">
-        <h2>My match cards</h2>
+        <h2>My Matches</h2>
         {myMatches.length === 0 ? (
-          <p className="empty-state">Your recorded matches will appear here.</p>
+          <p className="empty-state session-row-empty">Your recorded matches will appear here.</p>
         ) : (
           myMatches.map((match, index) => (
             <MatchCard
@@ -281,8 +281,11 @@ function PlayerDebtHeader({
         <span>Shuttle Fee: {formatVnd(shuttleFee)}</span>
       </div>
       <span>Matches: {matchesPlayed}</span>
-      <Link className="session-detail-link" to={`/${session.slug}/session/${session.id}`}>
-        <span>{sessionTitle(session)}</span>
+      <Link className="session-detail-link" to={`/${session.slug}/admin/${session.id}`}>
+        <span>
+          <strong>{sessionTitle(session)}</strong>
+          <small>{session.date}</small>
+        </span>
         <ChevronRight size={18} />
       </Link>
     </header>
@@ -302,7 +305,7 @@ function PreviousSessions({
 
   return (
     <section className="previous-sessions">
-      <p className="eyebrow">Previous sessions</p>
+      <h2>Previous sessions</h2>
       {sessions.map((session) => {
         const bill = playerBills({
           session,
@@ -312,7 +315,7 @@ function PreviousSessions({
         }).find((candidate) => candidate.userIds.some((userId) => currentUserIds.includes(userId)));
 
         return (
-          <article className="previous-session-card" key={session.id}>
+          <Link className="previous-session-card" key={session.id} to={`/${session.slug}/admin/${session.id}`}>
             <div>
               <strong>{sessionTitle(session)}</strong>
               <span>{session.date}</span>
@@ -321,7 +324,7 @@ function PreviousSessions({
               <strong>{formatVnd(bill?.totalDue ?? 0)}</strong>
               <span>{bill?.matchesPlayed ?? 0} matches</span>
             </div>
-          </article>
+          </Link>
         );
       })}
     </section>

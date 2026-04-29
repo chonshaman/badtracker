@@ -578,7 +578,7 @@ label {
 .session-list-row span {
   color: var(--muted);
   font-size: 0.86rem;
-  font-weight: 800;
+  font-weight: 400;
 }
 
 .session-row-action {
@@ -587,6 +587,11 @@ label {
   gap: 8px;
   color: var(--muted);
   transition: color 180ms ease, transform 180ms ease;
+}
+
+.session-row-action span,
+.session-status {
+  font-weight: 900;
 }
 
 .session-row-action svg {
@@ -1069,7 +1074,15 @@ label {
 }
 
 .session-detail-link span {
+  display: grid;
+  gap: 3px;
   color: #fff8eb;
+}
+
+.session-detail-link small {
+  color: rgba(255, 248, 235, 0.72);
+  font-size: 0.84rem;
+  font-weight: 400;
 }
 
 .session-detail-link svg {
@@ -1129,16 +1142,28 @@ label {
 
 .card-feed {
   display: grid;
-  gap: 12px;
+  gap: 4px;
 }
 
-.card-feed h2 {
+.card-feed h2,
+.previous-sessions h2 {
   margin-bottom: 0;
+}
+
+.session-row-empty {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  border: 1px solid rgba(23, 52, 44, 0.12);
+  border-radius: 18px;
+  background: #fffdf6;
+  padding: 14px 16px;
+  box-shadow: 0 10px 24px rgba(44, 34, 18, 0.06);
 }
 
 .previous-sessions {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .previous-session-card {
@@ -1150,7 +1175,9 @@ label {
   border: 1px solid rgba(23, 52, 44, 0.12);
   border-radius: 18px;
   background: #fffdf6;
+  color: inherit;
   padding: 14px 16px;
+  text-decoration: none;
   box-shadow: 0 10px 24px rgba(44, 34, 18, 0.06);
 }
 
@@ -1171,7 +1198,7 @@ label {
 .previous-session-card span {
   color: var(--muted);
   font-size: 0.84rem;
-  font-weight: 800;
+  font-weight: 400;
 }
 
 .match-card {

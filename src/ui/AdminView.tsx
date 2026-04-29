@@ -18,6 +18,7 @@ type Store = ReturnType<typeof import("../lib/store").useTrackerStore>;
 type AdminViewProps = {
   slug: string;
   store: Store;
+  initialSessionId?: string;
 };
 
 type SetupDraft = {
@@ -40,8 +41,8 @@ function runViewTransition(update: () => void) {
   if (!transition) update();
 }
 
-export function AdminView({ slug, store }: AdminViewProps) {
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+export function AdminView({ slug, store, initialSessionId }: AdminViewProps) {
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(initialSessionId ?? null);
   const [isCreating, setIsCreating] = useState(false);
   const [transitionDirection, setTransitionDirection] = useState<"to-detail" | "to-list">("to-detail");
   const sessionRoles = participantSessionRoles(store.state);
@@ -52,6 +53,10 @@ export function AdminView({ slug, store }: AdminViewProps) {
     ? store.state.sessions.find((session) => sessionRoles.has(session.id) && session.id === selectedSessionId)
     : undefined;
   const selectedRole = selectedSession ? sessionRoles.get(selectedSession.id) : undefined;
+
+  useEffect(() => {
+    setSelectedSessionId(initialSessionId ?? null);
+  }, [initialSessionId]);
 
   function handleSessionCreated(sessionId: string) {
     setSelectedSessionId(sessionId);
@@ -471,7 +476,7 @@ function ActiveSessionDashboard({
   }, [isTotalMatchesEditing, session]);
 
   function submitCourtPrice() {
-    const nextCourtPrice = parseMoneyInput(courtPriceDraft);
+    const nextCourtPrice = parseCourtMoneyInput(courtPriceDraft);
     if (nextCourtPrice <= 0) {
       setCourtPriceDraft(formatVnd(session.courtPrice));
       setIsCourtPriceEditing(false);
@@ -937,9 +942,10 @@ function CourtPriceMetric({
         >
           <input
             autoFocus
-            inputMode="numeric"
+            inputMode="decimal"
             value={draft}
-            onChange={(event) => onDraftChange(formatVnd(parseMoneyInput(event.target.value)))}
+            placeholder="1.5*120000"
+            onChange={(event) => onDraftChange(event.target.value.replace(/[^\d.*\s]/g, ""))}
             onBlur={onSubmit}
           />
           <button type="submit">Save</button>
@@ -1124,6 +1130,22 @@ function formatTime(value: string): string {
 
 function formatStatNumber(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function parseCourtMoneyInput(value: string): number {
+  const normalized = value.replace(/\s+/g, "");
+  if (!normalized) return 0;
+
+  if (normalized.includes("*")) {
+    const parts = normalized.split("*");
+    if (parts.length !== 2) return 0;
+    const hours = Number(parts[0]);
+    const hourlyPrice = Number(parts[1]);
+    if (!Number.isFinite(hours) || !Number.isFinite(hourlyPrice)) return 0;
+    return Math.round(hours * hourlyPrice);
+  }
+
+  return parseMoneyInput(value);
 }
 
 function sessionTitle(session: Session): string {

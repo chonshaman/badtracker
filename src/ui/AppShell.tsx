@@ -9,8 +9,10 @@ export function AppShell() {
   const location = useLocation();
   const { slug = "smash-tracker" } = useParams();
   const adminMatch = useMatch("/:slug/admin");
+  const adminDetailMatch = useMatch("/:slug/admin/:reportSessionId");
   const sessionMatch = useMatch("/:slug/session/:sessionId");
-  const mode = adminMatch ? "admin" : "player";
+  const mode = adminMatch || adminDetailMatch ? "admin" : "player";
+  const reportSessionId = adminDetailMatch?.params.reportSessionId;
   const sessionId = sessionMatch?.params.sessionId;
   const store = useTrackerStore();
   const activeSession = sessionId
@@ -35,7 +37,7 @@ export function AppShell() {
 
         <div className={`route-view route-view-${mode}`}>
           {mode === "admin" ? (
-            <AdminView slug={slug} store={store} />
+            <AdminView slug={slug} store={store} initialSessionId={reportSessionId} />
           ) : (
             <PlayerView slug={slug} sessionId={sessionId} store={store} activeSession={activeSession} />
           )}
