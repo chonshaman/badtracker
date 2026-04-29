@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { formatVnd } from "../lib/money";
@@ -105,28 +105,32 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
       <section className="login-card">
         <p className="eyebrow">Active session</p>
         <h1>Who are you?</h1>
-        <select value={playerId} onChange={(event) => setPlayerId(event.target.value)}>
-          <option value="">Select your name</option>
-          {roster.map((user) => (
-            <option key={user.id} value={user.id}>
-              {user.name}
-            </option>
-          ))}
-        </select>
+        <UserDropdown
+          users={roster}
+          value={playerId}
+          placeholder="Select your name"
+          onChange={setPlayerId}
+        />
         <button className="primary-button" disabled={!playerId}>
           Enter court
         </button>
-        <div className="guest-join">
+        <form
+          className="guest-join"
+          onSubmit={(event) => {
+            event.preventDefault();
+            addGuest();
+          }}
+        >
           <p className="eyebrow">Not on roster?</p>
           <input
             value={guestName}
             onChange={(event) => setGuestName(event.target.value)}
             placeholder="Add guest name"
           />
-          <button className="secondary-button" onClick={addGuest}>
+          <button type="submit" className="secondary-button">
             Add guest and enter
           </button>
-        </div>
+        </form>
       </section>
     );
   }
@@ -221,7 +225,22 @@ function RecordMatchModal({
   const [opponentId, setOpponentId] = useState(initialOpponentId);
   const [score, setScore] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isOpponentListOpen, setIsOpponentListOpen] = useState(false);
   const submitLock = useRef(false);
+  const opponentDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpponentListOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!opponentDropdownRef.current?.contains(event.target as Node)) {
+        setIsOpponentListOpen(false);
+      }
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, [isOpponentListOpen]);
 
   function handleSubmit() {
     if (!opponentId || submitLock.current) return;
@@ -238,32 +257,66 @@ function RecordMatchModal({
 
   return createPortal(
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Record match">
-      <div className="match-modal">
-        <button className="close-button" onClick={onClose} aria-label="Close">
+      <form
+        className="match-modal"
+        onSubmit={(event) => {
+          event.preventDefault();
+          handleSubmit();
+        }}
+      >
+        <button type="button" className="close-button" onClick={onClose} aria-label="Close">
           <X size={22} />
         </button>
         <p className="eyebrow">New match</p>
         <h2>{currentUser.name} vs {selectedOpponent?.name}</h2>
-        <select value={opponentId} onChange={(event) => setOpponentId(event.target.value)}>
-          {opponents.map((opponent) => (
-            <option key={opponent.id} value={opponent.id}>
-              {opponent.name}
-            </option>
-          ))}
-        </select>
+        <div className="custom-select" ref={opponentDropdownRef}>
+          <button
+            type="button"
+            className="custom-select-trigger"
+            aria-haspopup="listbox"
+            aria-expanded={isOpponentListOpen}
+            onClick={() => setIsOpponentListOpen((current) => !current)}
+          >
+            <span>{selectedOpponent?.name ?? "Select opponent"}</span>
+            <ChevronDown size={18} />
+          </button>
+          {isOpponentListOpen ? (
+            <div className="custom-select-menu" role="listbox" aria-label="Opponent">
+              {opponents.map((opponent) => {
+                const isSelected = opponent.id === opponentId;
+                return (
+                  <button
+                    type="button"
+                    className={isSelected ? "custom-select-option selected" : "custom-select-option"}
+                    key={opponent.id}
+                    role="option"
+                    aria-selected={isSelected}
+                    onClick={() => {
+                      setOpponentId(opponent.id);
+                      setIsOpponentListOpen(false);
+                    }}
+                  >
+                    <span>{opponent.name}</span>
+                    {isSelected ? <Check size={17} /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
         <label>
           Score
           <input
-          inputMode="numeric"
-          placeholder="21-19"
-          value={score}
-          onChange={(event) => updateScore(event.target.value)}
-        />
+            inputMode="numeric"
+            placeholder="21-19"
+            value={score}
+            onChange={(event) => updateScore(event.target.value)}
+          />
         </label>
-        <button className="primary-button" disabled={!opponentId || isSubmitting} onClick={handleSubmit}>
-          {isSubmitting ? "Submitting..." : "Confirm match"}
+        <button type="submit" className="primary-button" disabled={!opponentId || isSubmitting}>
+          {isSubmitting ? "Submitting..." : "Submit"}
         </button>
-      </div>
+      </form>
     </div>,
     document.body,
   );
@@ -287,7 +340,13 @@ function SessionPinGate({ sessionId, store }: { sessionId: string; store: Store 
   }
 
   return (
-    <section className="login-card">
+    <form
+      className="login-card"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void verifyPin();
+      }}
+    >
       <p className="eyebrow">Player access</p>
       <h1>Enter PIN.</h1>
       <label>
@@ -304,10 +363,75 @@ function SessionPinGate({ sessionId, store }: { sessionId: string; store: Store 
         />
       </label>
       {pinError ? <p className="form-error">{pinError}</p> : null}
-      <button className="primary-button" disabled={pinCode.length !== 4 || isVerifying} onClick={verifyPin}>
+      <button type="submit" className="primary-button" disabled={pinCode.length !== 4 || isVerifying}>
         {isVerifying ? "Verifying..." : "Continue"}
       </button>
-    </section>
+    </form>
+  );
+}
+
+function UserDropdown({
+  users,
+  value,
+  placeholder,
+  onChange,
+}: {
+  users: User[];
+  value: string;
+  placeholder: string;
+  onChange: (userId: string) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const selectedUser = users.find((user) => user.id === value);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!dropdownRef.current?.contains(event.target as Node)) setIsOpen(false);
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, [isOpen]);
+
+  return (
+    <div className="custom-select" ref={dropdownRef}>
+      <button
+        type="button"
+        className="custom-select-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((current) => !current)}
+      >
+        <span>{selectedUser?.name ?? placeholder}</span>
+        <ChevronDown size={18} />
+      </button>
+      {isOpen ? (
+        <div className="custom-select-menu" role="listbox" aria-label={placeholder}>
+          {users.map((user) => {
+            const isSelected = user.id === value;
+            return (
+              <button
+                type="button"
+                className={isSelected ? "custom-select-option selected" : "custom-select-option"}
+                key={user.id}
+                role="option"
+                aria-selected={isSelected}
+                onClick={() => {
+                  onChange(user.id);
+                  setIsOpen(false);
+                }}
+              >
+                <span>{user.name}</span>
+                {isSelected ? <Check size={17} /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
