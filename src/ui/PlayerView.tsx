@@ -433,6 +433,7 @@ function RecordMatchModal({
   const [isStake, setIsStake] = useState(false);
   const submitLock = useRef(false);
   const opponentDropdownRef = useRef<HTMLDivElement>(null);
+  const scoreInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!isOpponentListOpen) return;
@@ -446,6 +447,10 @@ function RecordMatchModal({
     window.addEventListener("pointerdown", handlePointerDown);
     return () => window.removeEventListener("pointerdown", handlePointerDown);
   }, [isOpponentListOpen]);
+
+  useEffect(() => {
+    scoreInputRef.current?.focus();
+  }, []);
 
   function handleSubmit() {
     if (!opponentId || submitLock.current) return;
@@ -524,6 +529,7 @@ function RecordMatchModal({
         <label>
           Score
           <input
+            ref={scoreInputRef}
             inputMode="numeric"
             placeholder="21-19"
             value={score}
