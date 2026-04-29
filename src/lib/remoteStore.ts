@@ -1,7 +1,15 @@
 import type { Match, RosterEntry, Session, TrackerState, User } from "../types";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const fallbackSupabaseUrl = "https://lhkonyltsafjkguctkmc.supabase.co";
+const fallbackSupabaseAnonKey = "sb_publishable_2DZhFU_EqNqIMnmWiNvm2g__D8e7-9R";
+const supabaseUrl =
+  import.meta.env.VITE_SUPABASE_URL ??
+  import.meta.env.NEXT_PUBLIC_SUPABASE_URL ??
+  fallbackSupabaseUrl;
+const supabaseAnonKey =
+  import.meta.env.VITE_SUPABASE_ANON_KEY ??
+  import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+  fallbackSupabaseAnonKey;
 
 export const isRemoteEnabled = Boolean(supabaseUrl && supabaseAnonKey);
 

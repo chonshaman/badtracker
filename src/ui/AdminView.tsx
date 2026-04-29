@@ -260,7 +260,7 @@ function SessionSetup({ slug, store }: AdminViewProps) {
 }
 
 function ActiveSessionDashboard({ session, store }: { session: Session; store: Store }) {
-  const shareLink = `${window.location.origin}/${session.slug}`;
+  const shareLink = `${window.location.origin}/${session.slug}/session/${session.id}`;
   const bills = playerBills({
     session,
     users: store.state.users,
