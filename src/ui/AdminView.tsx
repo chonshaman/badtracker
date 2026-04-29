@@ -384,6 +384,7 @@ function ActiveSessionDashboard({
   const shareLink = `${window.location.origin}/${session.slug}/session/${session.id}`;
   const shareText = session.pinCode ? `${shareLink}\nPIN: ${session.pinCode}` : shareLink;
   const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
+  const [isCopyTipVisible, setIsCopyTipVisible] = useState(false);
   const bills = playerBills({
     session,
     users: store.state.users,
@@ -396,6 +397,12 @@ function ActiveSessionDashboard({
   const totalDue = bills.reduce((sum, bill) => sum + bill.totalDue, 0);
   const collected = bills.filter((bill) => bill.paid).reduce((sum, bill) => sum + bill.totalDue, 0);
   const sessionCost = session.courtPrice + (sessionMatches.length * session.shuttlePrice) / session.shuttlesPerTube;
+
+  async function copyShareText() {
+    await navigator.clipboard.writeText(shareText);
+    setIsCopyTipVisible(true);
+    window.setTimeout(() => setIsCopyTipVisible(false), 1800);
+  }
 
   return (
     <section className="panel">
@@ -437,9 +444,12 @@ function ActiveSessionDashboard({
             alt="Session QR code"
             src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(shareLink)}`}
           />
-          <button className="secondary-button" onClick={() => navigator.clipboard.writeText(shareText)}>
-            <Copy size={18} /> Copy link
-          </button>
+          <div className="copy-action">
+            {isCopyTipVisible ? <div className="copy-tooltip">Copied the link with PIN code</div> : null}
+            <button className="secondary-button" onClick={copyShareText}>
+              <Copy size={18} /> Copy link
+            </button>
+          </div>
         </div>
       ) : null}
 
