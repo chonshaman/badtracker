@@ -7,8 +7,10 @@ import {
   remoteAddUser,
   remoteClaimSessionAccess,
   remoteCreateSession,
+  remoteDeleteSession,
   remoteDeleteMatch,
   remoteEndSession,
+  remoteGetSessionLinkStatus,
   remoteJoinSession,
   remoteRemoveSessionPlayers,
   remoteSetPaid,
@@ -19,11 +21,18 @@ import {
   remoteVerifySessionPin,
   subscribeRemoteChanges,
 } from "./remoteStore";
-import type { Match, RosterEntry, Session, SessionStatus, TrackerState, User } from "../types";
+import type { Match, RosterEntry, Session, SessionParticipant, SessionStatus, TrackerState, User } from "../types";
 
 const storageKey = "smash-tracker-state-v1";
 const channelName = "smash-tracker-sync";
 const closedStatus: SessionStatus = "Closed";
+
+export type DeletedSessionSnapshot = {
+  session: Session;
+  roster: RosterEntry[];
+  participants: SessionParticipant[];
+  matches: Match[];
+};
 
 function readState(): TrackerState {
   const raw = localStorage.getItem(storageKey);
@@ -45,6 +54,7 @@ export function useTrackerStore() {
   const [isSyncing, setIsSyncing] = useState(isRemoteEnabled);
   const [syncError, setSyncError] = useState<string | null>(null);
   const pendingRemoteWrites = useRef(0);
+  const softDeletedSessionIds = useRef(new Set<string>());
 
   useEffect(() => {
     writeState(state);
@@ -77,7 +87,7 @@ export function useTrackerStore() {
       if (pendingRemoteWrites.current > 0) return;
 
       try {
-        const remoteState = await loadRemoteState(defaultState.users);
+        const remoteState = applyLocalOnlyDeletes(await loadRemoteState(defaultState.users));
         if (!isMounted) return;
         setState(remoteState);
         writeState(remoteState);
@@ -117,12 +127,17 @@ export function useTrackerStore() {
     });
   };
 
+  const applyLocalOnlyDeletes = (nextState: TrackerState): TrackerState => {
+    if (softDeletedSessionIds.current.size === 0) return nextState;
+    return Array.from(softDeletedSessionIds.current).reduce(removeSessionFromState, nextState);
+  };
+
   const runRemote = async (operation: () => Promise<unknown>) => {
     if (!isRemoteEnabled) return;
     pendingRemoteWrites.current += 1;
     try {
       await operation();
-      const remoteState = await loadRemoteState(defaultState.users);
+      const remoteState = applyLocalOnlyDeletes(await loadRemoteState(defaultState.users));
       setState(remoteState);
       writeState(remoteState);
       setSyncError(null);
@@ -134,7 +149,7 @@ export function useTrackerStore() {
   };
 
   const refreshAfterRemoteWrite = async () => {
-    const remoteState = await loadRemoteState(defaultState.users);
+    const remoteState = applyLocalOnlyDeletes(await loadRemoteState(defaultState.users));
     setState(remoteState);
     writeState(remoteState);
     setSyncError(null);
@@ -163,6 +178,14 @@ export function useTrackerStore() {
         pendingRemoteWrites.current = Math.max(0, pendingRemoteWrites.current - 1);
       }
     },
+    getSessionLinkStatus: async (sessionId: string) => {
+      if (!isRemoteEnabled) return "unknown" as const;
+      try {
+        return await remoteGetSessionLinkStatus(sessionId);
+      } catch {
+        return "unknown" as const;
+      }
+    },
     addUser: (user: User) => {
       commit((current) =>
         current.users.some(
@@ -188,15 +211,20 @@ export function useTrackerStore() {
           users: existingUser ? current.users : [...current.users, user],
           roster: hasRosterEntry
             ? current.roster
-            : [...current.roster, { sessionId, userId: rosterUserId, paid: false, isPresent: true }],
+            : [...current.roster, { sessionId, userId: rosterUserId, paid: false, isPresent: true, isHost: false }],
         };
       });
       void runRemote(() => remoteJoinSession(user, sessionId));
     },
-    createSession: (session: Session, roster: RosterEntry[]) => {
-      const dedupedRoster = dedupeRosterByUserName(roster, state.users);
+    createSession: (session: Session, roster: RosterEntry[], setupUsers?: User[]) => {
+      const knownUsers = setupUsers ?? state.users;
+      const usersToAdd = knownUsers.filter(
+        (user) => roster.some((entry) => entry.userId === user.id) && !state.users.some((existing) => existing.id === user.id),
+      );
+      const dedupedRoster = dedupeRosterByUserName(roster, knownUsers);
       commit((current) => ({
         ...current,
+        users: [...current.users, ...usersToAdd],
         sessions: [
           ...current.sessions.map((item) =>
             item.slug === session.slug && item.status === "Active"
@@ -228,7 +256,7 @@ export function useTrackerStore() {
           },
         ],
       }));
-      void runRemote(() => remoteCreateSession(session, dedupedRoster, state.users));
+      void runRemote(() => remoteCreateSession(session, dedupedRoster, knownUsers));
     },
     endSession: (sessionId: string) => {
       commit((current) => ({
@@ -240,6 +268,47 @@ export function useTrackerStore() {
         ),
       }));
       void runRemote(() => remoteEndSession(sessionId));
+    },
+    deleteSession: (sessionId: string) => {
+      commit((current) => ({
+        ...current,
+        sessions: current.sessions.filter((session) => session.id !== sessionId),
+        roster: current.roster.filter((entry) => entry.sessionId !== sessionId),
+        participants: current.participants.filter((participant) => participant.sessionId !== sessionId),
+        matches: current.matches.filter((match) => match.sessionId !== sessionId),
+      }));
+      void runRemote(() => remoteDeleteSession(sessionId));
+    },
+    deleteSessionLocal: (sessionId: string) => {
+      softDeletedSessionIds.current.add(sessionId);
+      commit((current) => removeSessionFromState(current, sessionId));
+    },
+    deleteSessionRemote: (sessionId: string) => {
+      void runRemote(async () => {
+        await remoteDeleteSession(sessionId);
+        softDeletedSessionIds.current.delete(sessionId);
+      });
+    },
+    restoreSession: (snapshot: DeletedSessionSnapshot) => {
+      softDeletedSessionIds.current.delete(snapshot.session.id);
+      commit((current) => ({
+        ...current,
+        sessions: current.sessions.some((session) => session.id === snapshot.session.id)
+          ? current.sessions
+          : [...current.sessions, snapshot.session],
+        roster: [
+          ...current.roster.filter((entry) => entry.sessionId !== snapshot.session.id),
+          ...snapshot.roster,
+        ],
+        participants: [
+          ...current.participants.filter((participant) => participant.sessionId !== snapshot.session.id),
+          ...snapshot.participants,
+        ],
+        matches: [
+          ...current.matches.filter((match) => match.sessionId !== snapshot.session.id),
+          ...snapshot.matches,
+        ],
+      }));
     },
     updateCourtPrice: (sessionId: string, courtPrice: number) => {
       commit((current) => ({
@@ -375,7 +444,18 @@ function normalizeState(state: TrackerState): TrackerState {
     roster: state.roster.map((entry) => ({
       ...entry,
       isPresent: entry.isPresent ?? true,
+      isHost: entry.isHost ?? false,
     })),
+  };
+}
+
+function removeSessionFromState(state: TrackerState, sessionId: string): TrackerState {
+  return {
+    ...state,
+    sessions: state.sessions.filter((session) => session.id !== sessionId),
+    roster: state.roster.filter((entry) => entry.sessionId !== sessionId),
+    participants: state.participants.filter((participant) => participant.sessionId !== sessionId),
+    matches: state.matches.filter((match) => match.sessionId !== sessionId),
   };
 }
 

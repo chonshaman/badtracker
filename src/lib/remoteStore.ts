@@ -47,6 +47,7 @@ type RemoteRosterEntry = {
   user_id: string;
   paid: boolean;
   is_present?: boolean;
+  is_host?: boolean;
 };
 
 type RemoteSessionParticipant = {
@@ -200,6 +201,13 @@ export async function remoteVerifySessionPin(sessionId: string, pinCode: string)
   });
 }
 
+export async function remoteGetSessionLinkStatus(sessionId: string): Promise<"active" | "closed" | "missing"> {
+  return request<"active" | "closed" | "missing">("rpc/session_link_status", {
+    method: "POST",
+    body: JSON.stringify({ p_session_id: sessionId }),
+  });
+}
+
 export async function remoteAddUser(user: User) {
   const existingUser = await findRemoteUserByName(user.name);
   if (existingUser) return existingUser;
@@ -240,22 +248,35 @@ export async function remoteCreateSession(session: Session, roster: RosterEntry[
   }
   await remoteClaimSessionAccess(session.id, "host");
   if (roster.length > 0) {
-    await request("session_roster", {
-      method: "POST",
-      headers: { Prefer: "resolution=ignore-duplicates" },
-      body: JSON.stringify(roster.map(toRemoteRoster)),
-    });
+    await insertRemoteRoster(roster);
   }
 }
 
 export async function remoteJoinSession(user: User, sessionId: string) {
   const remoteUser = await remoteAddUser(user);
-  await request("session_roster", {
-    method: "POST",
-    headers: { Prefer: "resolution=ignore-duplicates" },
-    body: JSON.stringify(toRemoteRoster({ sessionId, userId: remoteUser.id, paid: false, isPresent: true })),
-  });
+  await insertRemoteRoster([{ sessionId, userId: remoteUser.id, paid: false, isPresent: true, isHost: false }]);
   return remoteUser;
+}
+
+async function insertRemoteRoster(roster: RosterEntry[]) {
+  try {
+    await request("session_roster", {
+      method: "POST",
+      headers: { Prefer: "resolution=ignore-duplicates" },
+      body: JSON.stringify(roster.map((entry) => toRemoteRoster(entry))),
+    });
+  } catch (error) {
+    if (!isMissingColumn(error, "is_host") && !isMissingColumn(error, "is_present")) throw error;
+    try {
+      await request("session_roster", {
+        method: "POST",
+        headers: { Prefer: "resolution=ignore-duplicates" },
+        body: JSON.stringify(roster.map((entry) => toRemoteRoster(entry, false, false))),
+      });
+    } catch (fallbackError) {
+      throw fallbackError;
+    }
+  }
 }
 
 export async function remoteEndSession(sessionId: string) {
@@ -263,6 +284,10 @@ export async function remoteEndSession(sessionId: string) {
     method: "PATCH",
     body: JSON.stringify({ status: "Closed", ended_at: new Date().toISOString() }),
   });
+}
+
+export async function remoteDeleteSession(sessionId: string) {
+  await request(`sessions?id=eq.${encodeURIComponent(sessionId)}`, { method: "DELETE" });
 }
 
 export async function remoteUpdateCourtPrice(sessionId: string, courtPrice: number) {
@@ -381,11 +406,24 @@ function toRemoteSession(session: Session, includeName = true): RemoteSession {
 }
 
 function fromRemoteRoster(entry: RemoteRosterEntry): RosterEntry {
-  return { sessionId: entry.session_id, userId: entry.user_id, paid: entry.paid, isPresent: entry.is_present ?? true };
+  return {
+    sessionId: entry.session_id,
+    userId: entry.user_id,
+    paid: entry.paid,
+    isPresent: entry.is_present ?? true,
+    isHost: entry.is_host ?? false,
+  };
 }
 
-function toRemoteRoster(entry: RosterEntry): RemoteRosterEntry {
-  return { session_id: entry.sessionId, user_id: entry.userId, paid: entry.paid, is_present: entry.isPresent };
+function toRemoteRoster(entry: RosterEntry, includeHost = true, includePresent = true): RemoteRosterEntry {
+  const remoteEntry: RemoteRosterEntry = {
+    session_id: entry.sessionId,
+    user_id: entry.userId,
+    paid: entry.paid,
+  };
+  if (includePresent) remoteEntry.is_present = entry.isPresent;
+  if (includeHost) remoteEntry.is_host = entry.isHost;
+  return remoteEntry;
 }
 
 function fromRemoteParticipant(entry: RemoteSessionParticipant): SessionParticipant {
@@ -426,9 +464,13 @@ function toRemoteMatch(match: Match): RemoteMatch {
 }
 
 function isMissingSessionNameColumn(error: unknown): boolean {
+  return isMissingColumn(error, "name") || isMissingColumn(error, "pin_code");
+}
+
+function isMissingColumn(error: unknown, column: string): boolean {
   if (!(error instanceof Error)) return false;
   const message = error.message.toLowerCase();
-  return message.includes("column") && (message.includes("name") || message.includes("pin_code"));
+  return message.includes("column") && message.includes(column.toLowerCase());
 }
 
 async function findRemoteUserByName(name: string): Promise<User | undefined> {

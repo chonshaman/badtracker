@@ -85,6 +85,7 @@ export function playerBills(args: {
         user,
         userIds: uniqueUserIds,
         isPresent,
+        isHost: entries.some((entry) => entry.isHost),
         courtShare,
         shuttleFee,
         matchesPlayed,

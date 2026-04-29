@@ -3,6 +3,7 @@ import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Download,
 import { useEffect, useRef, useState } from "react";
 import { presets } from "../data/defaults";
 import { formatVnd, parseMoneyInput } from "../lib/money";
+import type { DeletedSessionSnapshot } from "../lib/store";
 import {
   activeRosterCount,
   calculateFee,
@@ -45,6 +46,9 @@ export function AdminView({ slug, store, initialSessionId }: AdminViewProps) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(initialSessionId ?? null);
   const [isCreating, setIsCreating] = useState(false);
   const [transitionDirection, setTransitionDirection] = useState<"to-detail" | "to-list">("to-detail");
+  const [deleteToast, setDeleteToast] = useState<DeletedSessionSnapshot | null>(null);
+  const [deleteCountdown, setDeleteCountdown] = useState(7);
+  const deleteTimerRef = useRef<number | null>(null);
   const sessionRoles = participantSessionRoles(store.state);
   const activeSession = store.state.sessions.find(
     (session) => sessionRoles.has(session.id) && session.slug === slug && session.status === "Active",
@@ -57,6 +61,22 @@ export function AdminView({ slug, store, initialSessionId }: AdminViewProps) {
   useEffect(() => {
     setSelectedSessionId(initialSessionId ?? null);
   }, [initialSessionId]);
+
+  useEffect(
+    () => () => {
+      if (deleteTimerRef.current) window.clearTimeout(deleteTimerRef.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!deleteToast) return undefined;
+    setDeleteCountdown(7);
+    const intervalId = window.setInterval(() => {
+      setDeleteCountdown((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [deleteToast]);
 
   function handleSessionCreated(sessionId: string) {
     setSelectedSessionId(sessionId);
@@ -73,6 +93,28 @@ export function AdminView({ slug, store, initialSessionId }: AdminViewProps) {
     runViewTransition(() => setSelectedSessionId(null));
   }
 
+  function scheduleSessionDelete(snapshot: DeletedSessionSnapshot) {
+    if (deleteTimerRef.current) window.clearTimeout(deleteTimerRef.current);
+    store.deleteSessionLocal(snapshot.session.id);
+    setDeleteCountdown(7);
+    setDeleteToast(snapshot);
+    closeSession();
+    deleteTimerRef.current = window.setTimeout(() => {
+      store.deleteSessionRemote(snapshot.session.id);
+      setDeleteToast(null);
+      deleteTimerRef.current = null;
+    }, 7000);
+  }
+
+  function undoSessionDelete() {
+    if (!deleteToast) return;
+    if (deleteTimerRef.current) window.clearTimeout(deleteTimerRef.current);
+    store.restoreSession(deleteToast);
+    openSession(deleteToast.session.id);
+    setDeleteToast(null);
+    deleteTimerRef.current = null;
+  }
+
   const viewKey = selectedSession ? `detail-${selectedSession.id}` : "list";
 
   return (
@@ -87,8 +129,11 @@ export function AdminView({ slug, store, initialSessionId }: AdminViewProps) {
               session={selectedSession}
               role={selectedRole ?? "player"}
               store={store}
+              onDeleted={scheduleSessionDelete}
             />
           </div>
+        ) : selectedSessionId && !store.isSyncing ? (
+          <MissingAdminSessionState slug={slug} onBack={closeSession} />
         ) : (
           <div className="reports-list-view">
             <HeroCard slug={slug} activeSession={activeSession} />
@@ -110,7 +155,32 @@ export function AdminView({ slug, store, initialSessionId }: AdminViewProps) {
           onSessionCreated={handleSessionCreated}
         />
       ) : null}
+      {deleteToast ? (
+        <DeletedSessionToast
+          sessionName={sessionTitle(deleteToast.session)}
+          remainingSeconds={deleteCountdown}
+          onUndo={undoSessionDelete}
+        />
+      ) : null}
     </>
+  );
+}
+
+function MissingAdminSessionState({ slug, onBack }: { slug: string; onBack: () => void }) {
+  return (
+    <div className="reports-detail-view">
+      <button className="secondary-button detail-back-button" onClick={onBack}>
+        <ArrowLeft size={18} /> Back
+      </button>
+      <section className="player-empty missing-session-state">
+        <p className="eyebrow">Session unavailable</p>
+        <h1>Session no longer exists.</h1>
+        <p>This session is no longer in the database. It may have been deleted by the host.</p>
+        <a className="secondary-button" href={`/${slug}/admin`}>
+          Back to reports
+        </a>
+      </section>
+    </div>
   );
 }
 
@@ -205,10 +275,12 @@ function SessionSetup({
   const [selectedPreset, setSelectedPreset] = useState(initialPreset.id);
   const [selectedUsers, setSelectedUsers] = useState<string[]>(
     uniqueUsersByName(
-      store.state.users.filter((user) => user.role === "Player" && user.type === "Regular"),
+      store.state.users.filter((user) => user.type === "Regular"),
     ).map((u) => u.id),
   );
+  const [hostUserIds, setHostUserIds] = useState<string[]>([]);
   const [hiddenUserIds, setHiddenUserIds] = useState<string[]>([]);
+  const [setupAddedUsers, setSetupAddedUsers] = useState<User[]>([]);
   const [guestName, setGuestName] = useState("");
   const guestAddLock = useRef(false);
   const [draft, setDraft] = useState<SetupDraft>(() => {
@@ -217,7 +289,8 @@ function SessionSetup({
   });
 
   const computedFee = calculateFee(draft);
-  const setupPlayers = uniqueUsersByName(store.state.users.filter((user) => user.role === "Player")).filter(
+  const setupUsers = uniqueUsersByName([...store.state.users, ...setupAddedUsers]);
+  const setupPlayers = setupUsers.filter(
     (user) => !hiddenUserIds.includes(user.id),
   );
 
@@ -244,6 +317,7 @@ function SessionSetup({
       setSelectedUsers((current) =>
         current.includes(existingUser.id) ? current : [...current, existingUser.id],
       );
+      setHiddenUserIds((current) => current.filter((id) => id !== existingUser.id));
       setGuestName("");
       guestAddLock.current = false;
       return;
@@ -255,8 +329,10 @@ function SessionSetup({
       role: "Player",
       type: "Temp",
     };
+    setSetupAddedUsers((current) => [...current, user]);
     store.addUser(user);
     setSelectedUsers((current) => Array.from(new Set([...current, user.id])));
+    setHiddenUserIds((current) => current.filter((id) => id !== user.id));
     setGuestName("");
     window.setTimeout(() => {
       guestAddLock.current = false;
@@ -265,7 +341,7 @@ function SessionSetup({
 
   function launchSession() {
     const sessionId = `s-${crypto.randomUUID()}`;
-    const uniqueSelectedUsers = uniqueUserIdsByName(selectedUsers, store.state.users);
+    const uniqueSelectedUsers = uniqueUserIdsByName(selectedUsers, setupUsers);
     const trimmedSessionName = sessionName.trim();
     const session: Session = {
       id: sessionId,
@@ -287,13 +363,15 @@ function SessionSetup({
       userId,
       paid: false,
       isPresent: true,
+      isHost: hostUserIds.includes(userId),
     }));
-    store.createSession(session, roster);
+    store.createSession(session, roster, setupUsers);
     onSessionCreated(sessionId);
   }
 
   function removeSetupPlayer(userId: string) {
     setSelectedUsers((current) => current.filter((id) => id !== userId));
+    setHostUserIds((current) => current.filter((id) => id !== userId));
     setHiddenUserIds((current) => (current.includes(userId) ? current : [...current, userId]));
   }
 
@@ -341,26 +419,58 @@ function SessionSetup({
             const isSelected = selectedUsers.includes(user.id);
             return (
               <div className="roster-row" key={user.id}>
-                <label className="roster-check">
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() =>
-                      setSelectedUsers((current) =>
-                        current.includes(user.id)
-                          ? current.filter((id) => id !== user.id)
-                          : Array.from(new Set([...current, user.id])),
-                      )
+                <div
+                  className={isSelected ? "roster-check selected" : "roster-check"}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() =>
+                    setSelectedUsers((current) => {
+                      if (current.includes(user.id)) {
+                        setHostUserIds((hosts) => hosts.filter((id) => id !== user.id));
+                        return current.filter((id) => id !== user.id);
+                      }
+                      return Array.from(new Set([...current, user.id]));
+                    })
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedUsers((current) => {
+                        if (current.includes(user.id)) {
+                          setHostUserIds((hosts) => hosts.filter((id) => id !== user.id));
+                          return current.filter((id) => id !== user.id);
+                        }
+                        return Array.from(new Set([...current, user.id]));
+                      });
                     }
-                  />
-                  <span>{user.name}</span>
-                  <small>{user.type}</small>
-                </label>
+                  }}
+                >
+                  <div className="roster-card-content">
+                    <div className="roster-name-cell">
+                      <span>{user.name}</span>
+                    </div>
+                    <label className="setup-host-toggle paid-toggle" onClick={(event) => event.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={hostUserIds.includes(user.id)}
+                        disabled={!isSelected}
+                        onChange={() =>
+                          setHostUserIds((current) => (current.includes(user.id) ? [] : [user.id]))
+                        }
+                      />
+                      <span className="toggle-dot" aria-hidden="true" />
+                      Host
+                    </label>
+                  </div>
+                </div>
                 <button
                   type="button"
-                  className="icon-button"
+                  className="icon-button roster-remove-button"
                   aria-label={`Remove ${user.name} from this session`}
-                  onClick={() => removeSetupPlayer(user.id)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    removeSetupPlayer(user.id);
+                  }}
                 >
                   <Trash2 size={18} />
                 </button>
@@ -382,7 +492,7 @@ function SessionSetup({
 
       {step === 3 && (
         <div className="launch-card">
-          <p>{uniqueUserIdsByName(selectedUsers, store.state.users).length} players selected</p>
+          <p>{uniqueUserIdsByName(selectedUsers, setupUsers).length} players selected</p>
           <strong>{formatVnd(draft.feePerPerson || computedFee)} per person / match</strong>
           <span>
             Max matches: {Math.floor(draft.totalCourtTime / draft.matchDuration)} from{" "}
@@ -419,14 +529,15 @@ function ActiveSessionDashboard({
   session,
   role,
   store,
+  onDeleted,
 }: {
   session: Session;
   role: "host" | "player";
   store: Store;
+  onDeleted: (snapshot: DeletedSessionSnapshot) => void;
 }) {
   const isHost = role === "host";
   const shareLink = `${window.location.origin}/${session.slug}/session/${session.id}`;
-  const shareText = session.pinCode ? `${shareLink}\nPIN: ${session.pinCode}` : shareLink;
   const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
   const [isCopyTipVisible, setIsCopyTipVisible] = useState(false);
   const [isCourtPriceEditing, setIsCourtPriceEditing] = useState(false);
@@ -437,6 +548,9 @@ function ActiveSessionDashboard({
   const [totalCourtTimeDraft, setTotalCourtTimeDraft] = useState(() => String(session.totalCourtTime));
   const [isTotalMatchesEditing, setIsTotalMatchesEditing] = useState(false);
   const [totalMatchesDraft, setTotalMatchesDraft] = useState(() => formatStatNumber(maxMatches(session)));
+  const [isEndConfirmOpen, setIsEndConfirmOpen] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [participantName, setParticipantName] = useState("");
   const bills = playerBills({
     session,
     users: store.state.users,
@@ -454,7 +568,7 @@ function ActiveSessionDashboard({
   const sessionCost = session.courtPrice + (sessionMatches.length * session.shuttlePrice) / session.shuttlesPerTube;
 
   async function copyShareText() {
-    await navigator.clipboard.writeText(shareText);
+    await navigator.clipboard.writeText(shareLink);
     setIsCopyTipVisible(true);
     window.setTimeout(() => setIsCopyTipVisible(false), 1800);
   }
@@ -524,6 +638,22 @@ function ActiveSessionDashboard({
     setIsTotalMatchesEditing(false);
   }
 
+  function addParticipant() {
+    const trimmed = participantName.trim();
+    if (!trimmed) return;
+    const existingUser = store.state.users.find(
+      (user) => user.name.trim().toLowerCase() === trimmed.toLowerCase(),
+    );
+    const user: User = existingUser ?? {
+      id: `u-${crypto.randomUUID()}`,
+      name: trimmed,
+      role: "Player",
+      type: "Temp",
+    };
+    store.joinSessionGuest(user, session.id);
+    setParticipantName("");
+  }
+
   return (
     <section className="panel report-detail-panel">
       <div className="section-header">
@@ -535,7 +665,7 @@ function ActiveSessionDashboard({
         </div>
         <div className="header-actions">
           {isHost && session.status === "Active" ? (
-            <button className="danger-button" onClick={() => store.endSession(session.id)}>
+            <button className="danger-button" onClick={() => setIsEndConfirmOpen(true)}>
               End session
             </button>
           ) : null}
@@ -549,7 +679,7 @@ function ActiveSessionDashboard({
             <h3>Player join link</h3>
             <p>{shareLink}</p>
             <div className="copy-action">
-              {isCopyTipVisible ? <div className="copy-tooltip">Copied the link with PIN code</div> : null}
+              {isCopyTipVisible ? <div className="copy-tooltip">Copied link</div> : null}
               <button className="secondary-button" onClick={copyShareText}>
                 <Copy size={18} /> Copy link
               </button>
@@ -576,6 +706,24 @@ function ActiveSessionDashboard({
             <span>{formatVnd(courtShare)} court share</span>
           </div>
         </div>
+        {isHost ? (
+          <form
+            className="participant-add-row"
+            onSubmit={(event) => {
+              event.preventDefault();
+              addParticipant();
+            }}
+          >
+            <input
+              value={participantName}
+              onChange={(event) => setParticipantName(event.target.value)}
+              placeholder="Add player name"
+            />
+            <button type="submit" className="secondary-button">
+              <Plus size={18} /> Add
+            </button>
+          </form>
+        ) : null}
         {bills.map((bill) => (
           <div className={bill.isPresent ? "leaderboard-player" : "leaderboard-player not-present"} key={bill.user.id}>
             <div
@@ -593,7 +741,10 @@ function ActiveSessionDashboard({
               }}
             >
               <div className="leader-player-copy">
-                <strong>{bill.user.name}</strong>
+                <div className="leader-name-line">
+                  <strong>{bill.user.name}</strong>
+                  {bill.isHost ? <span className="host-badge">Host</span> : null}
+                </div>
                 <span>
                   {bill.isPresent ? "" : "No-show · "}
                   {bill.matchesPlayed} matches · <strong className="leader-row-amount">{formatVnd(bill.totalDue)}</strong>
@@ -720,7 +871,121 @@ function ActiveSessionDashboard({
           ))
         )}
       </div>
+
+      {isHost ? (
+        <div className="table-card delete-session-zone">
+          <div>
+            <h3>Delete session</h3>
+            <p>This removes the session, participants, and match records from Supabase.</p>
+          </div>
+          <button type="button" className="danger-button" onClick={() => setIsDeleteConfirmOpen(true)}>
+            <Trash2 size={18} /> Delete session
+          </button>
+        </div>
+      ) : null}
+
+      {isEndConfirmOpen ? (
+        <ConfirmEndSessionModal
+          sessionName={sessionTitle(session)}
+          onCancel={() => setIsEndConfirmOpen(false)}
+          onConfirm={() => {
+            store.endSession(session.id);
+            setIsEndConfirmOpen(false);
+          }}
+        />
+      ) : null}
+      {isDeleteConfirmOpen ? (
+        <ConfirmSessionDeleteModal
+          sessionName={sessionTitle(session)}
+          onCancel={() => setIsDeleteConfirmOpen(false)}
+          onConfirm={() => {
+            setIsDeleteConfirmOpen(false);
+            onDeleted(snapshotSessionForDelete(session, store.state));
+          }}
+        />
+      ) : null}
     </section>
+  );
+}
+
+function DeletedSessionToast({
+  sessionName,
+  remainingSeconds,
+  onUndo,
+}: {
+  sessionName: string;
+  remainingSeconds: number;
+  onUndo: () => void;
+}) {
+  return createPortal(
+    <div className="undo-toast" role="status" aria-live="polite">
+      <div>
+        <strong>The session has been deleted.</strong>
+        <span>{sessionName} will be permanently deleted in {remainingSeconds}s.</span>
+      </div>
+      <button type="button" onClick={onUndo}>
+        Undo
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
+function ConfirmSessionDeleteModal({
+  sessionName,
+  onCancel,
+  onConfirm,
+}: {
+  sessionName: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return createPortal(
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Confirm delete session">
+      <div className="confirm-modal">
+        <p className="eyebrow">Delete session</p>
+        <h2>Delete this session?</h2>
+        <p>{sessionName} will disappear now. You can undo for 7 seconds before it is removed from Supabase.</p>
+        <div className="button-row">
+          <button type="button" className="secondary-button" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" className="danger-button" onClick={onConfirm}>
+            Delete session
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function ConfirmEndSessionModal({
+  sessionName,
+  onCancel,
+  onConfirm,
+}: {
+  sessionName: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return createPortal(
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Confirm end session">
+      <div className="confirm-modal">
+        <p className="eyebrow">End session</p>
+        <h2>Close this session?</h2>
+        <p>{sessionName} will be marked closed and players can no longer record new matches.</p>
+        <div className="button-row">
+          <button type="button" className="secondary-button" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" className="danger-button" onClick={onConfirm}>
+            End session
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -1156,6 +1421,15 @@ function participantSessionRoles(state: TrackerState): Map<string, "host" | "pla
   return new Map(
     state.participants.map((participant) => [participant.sessionId, participant.role]),
   );
+}
+
+function snapshotSessionForDelete(session: Session, state: TrackerState): DeletedSessionSnapshot {
+  return {
+    session,
+    roster: state.roster.filter((entry) => entry.sessionId === session.id),
+    participants: state.participants.filter((participant) => participant.sessionId === session.id),
+    matches: state.matches.filter((match) => match.sessionId === session.id),
+  };
 }
 
 function generatePinCode(): string {

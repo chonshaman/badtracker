@@ -32,10 +32,12 @@ create table if not exists session_roster (
   user_id text not null references users(id) on delete cascade,
   paid boolean not null default false,
   is_present boolean not null default true,
+  is_host boolean not null default false,
   primary key (session_id, user_id)
 );
 
 alter table session_roster add column if not exists is_present boolean not null default true;
+alter table session_roster add column if not exists is_host boolean not null default false;
 
 create table if not exists session_participants (
   id uuid primary key default gen_random_uuid(),
@@ -182,6 +184,36 @@ end;
 $$;
 
 grant execute on function verify_session_pin(text, text) to anon, authenticated;
+
+create or replace function session_link_status(p_session_id text)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if exists (
+    select 1
+    from sessions
+    where id = p_session_id
+      and status = 'Active'
+  ) then
+    return 'active';
+  end if;
+
+  if exists (
+    select 1
+    from sessions
+    where id = p_session_id
+  ) then
+    return 'closed';
+  end if;
+
+  return 'missing';
+end;
+$$;
+
+grant execute on function session_link_status(text) to anon, authenticated;
 
 drop policy if exists "Public read session roster" on session_roster;
 drop policy if exists "Public insert session roster" on session_roster;

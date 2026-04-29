@@ -20,6 +20,9 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
   const [playerId, setPlayerId] = useState(() => sessionStorage.getItem(playerStorageKey) ?? "");
   const [selectedOpponentId, setSelectedOpponentId] = useState<string | null>(null);
   const [guestName, setGuestName] = useState("");
+  const [sessionLinkStatus, setSessionLinkStatus] = useState<"checking" | "active" | "closed" | "missing" | "unknown">(
+    sessionId && store.isRemoteEnabled ? "checking" : "unknown",
+  );
 
   useEffect(() => {
     setPlayerId(sessionStorage.getItem(playerStorageKey) ?? "");
@@ -28,6 +31,23 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
   useEffect(() => {
     if (playerId) sessionStorage.setItem(playerStorageKey, playerId);
   }, [playerId, playerStorageKey]);
+
+  useEffect(() => {
+    if (!sessionId || !store.isRemoteEnabled || activeSession) {
+      setSessionLinkStatus("unknown");
+      return;
+    }
+
+    let isMounted = true;
+    setSessionLinkStatus("checking");
+    void store.getSessionLinkStatus(sessionId).then((status) => {
+      if (isMounted) setSessionLinkStatus(status);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeSession, sessionId, store.isRemoteEnabled]);
 
   if (!activeSession) {
     if (store.isRemoteEnabled && store.isSyncing) {
@@ -52,6 +72,36 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
     }
 
     if (sessionId && store.isRemoteEnabled) {
+      if (sessionLinkStatus === "checking") {
+        return (
+          <section className="player-empty">
+            <p className="eyebrow">Checking session</p>
+            <h1>Looking up court.</h1>
+            <p>Confirming this shared link with Supabase.</p>
+          </section>
+        );
+      }
+
+      if (sessionLinkStatus === "missing") {
+        return (
+          <SessionMissingState
+            title="Session no longer exists."
+            message="This session is no longer in the database. It may have been deleted by the host."
+            slug={slug}
+          />
+        );
+      }
+
+      if (sessionLinkStatus === "closed") {
+        return (
+          <SessionMissingState
+            title="Session is closed."
+            message="This session is already closed, so players can no longer enter from this link."
+            slug={slug}
+          />
+        );
+      }
+
       return <SessionPinGate sessionId={sessionId} store={store} />;
     }
 
@@ -160,6 +210,14 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
   const currentUserIds = store.state.users
     .filter((user) => user.name.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
     .map((user) => user.id);
+  const joinedSessions = store.state.sessions
+    .filter((session) =>
+      store.state.roster.some(
+        (entry) => entry.sessionId === session.id && currentUserIds.includes(entry.userId),
+      ),
+    )
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const latestJoinedSession = joinedSessions[0] ?? activeSession;
   const previousSessions = store.state.sessions
     .filter(
       (session) =>
@@ -173,7 +231,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
   return (
     <div className="player-screen">
       <PlayerDebtHeader
-        session={activeSession}
+        session={latestJoinedSession}
         playerName={currentUser.name}
         totalDue={totalDue}
         courtFee={courtFee}
@@ -191,7 +249,10 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
               key={opponent.id}
               onClick={() => setSelectedOpponentId(opponent.id)}
             >
-              {opponent.name}
+              <span>{opponent.name}</span>
+              {isSessionHost(store.state.roster, activeSession.id, opponent.id) ? (
+                <span className="host-badge opponent-host-badge">Host</span>
+              ) : null}
             </button>
           ))}
         </div>
@@ -243,6 +304,27 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
         />
       )}
     </div>
+  );
+}
+
+function SessionMissingState({
+  title,
+  message,
+  slug,
+}: {
+  title: string;
+  message: string;
+  slug: string;
+}) {
+  return (
+    <section className="player-empty missing-session-state">
+      <p className="eyebrow">Session unavailable</p>
+      <h1>{title}</h1>
+      <p>{message}</p>
+      <Link className="secondary-button" to={`/${slug}`}>
+        Back to player home
+      </Link>
+    </section>
   );
 }
 
@@ -490,7 +572,7 @@ function SessionPinGate({ sessionId, store }: { sessionId: string; store: Store 
     setIsVerifying(false);
 
     if (!isValid) {
-      setPinError("PIN code does not match this session.");
+      setPinError("PIN code does not match this session, or this session is no longer in the database.");
       return;
     }
   }
@@ -655,6 +737,10 @@ function formatScoreInput(value: string): string {
   }
 
   return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+}
+
+function isSessionHost(roster: { sessionId: string; userId: string; isHost?: boolean }[], sessionId: string, userId: string): boolean {
+  return roster.some((entry) => entry.sessionId === sessionId && entry.userId === userId && entry.isHost);
 }
 
 function readScoreResult(score: string): { formattedScore: string; playerWon: boolean } | null {

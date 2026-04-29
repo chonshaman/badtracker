@@ -41,6 +41,7 @@ export type RosterEntry = {
   userId: string;
   paid: boolean;
   isPresent: boolean;
+  isHost: boolean;
 };
 
 export type SessionParticipant = {
@@ -74,6 +75,7 @@ export type PlayerBill = {
   user: User;
   userIds: string[];
   isPresent: boolean;
+  isHost: boolean;
   courtShare: number;
   shuttleFee: number;
   matchesPlayed: number;
