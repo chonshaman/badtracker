@@ -9,9 +9,7 @@ createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Navigate to="/smash-tracker" replace />} />
-        <Route path="/:slug" element={<AppShell mode="player" />} />
-        <Route path="/:slug/session/:sessionId" element={<AppShell mode="player" />} />
-        <Route path="/:slug/admin" element={<AppShell mode="admin" />} />
+        <Route path="/:slug/*" element={<AppShell />} />
         <Route path="*" element={<Navigate to="/smash-tracker" replace />} />
       </Routes>
     </BrowserRouter>

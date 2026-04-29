@@ -19,6 +19,11 @@
   --shadow: 0 24px 70px rgba(44, 34, 18, 0.18);
 }
 
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable both-edges;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -27,6 +32,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at 10% 10%, rgba(216, 243, 106, 0.45), transparent 26rem),
     radial-gradient(circle at 92% 8%, rgba(255, 90, 45, 0.22), transparent 22rem),
@@ -98,7 +104,7 @@ h3 {
   z-index: 20;
   display: flex;
   gap: 8px;
-  width: max-content;
+  width: 214px;
   margin: 0 auto 18px;
   padding: 7px;
   border: 1px solid rgba(23, 52, 44, 0.12);
@@ -106,6 +112,11 @@ h3 {
   background: rgba(255, 248, 235, 0.76);
   backdrop-filter: blur(18px);
   box-shadow: 0 12px 40px rgba(44, 34, 18, 0.1);
+  contain: layout paint;
+}
+
+.mobile-bottom-nav {
+  display: none;
 }
 
 .nav-pill {
@@ -128,7 +139,34 @@ h3 {
 .player-screen {
   display: grid;
   gap: 18px;
-  animation: rise-in 420ms ease both;
+}
+
+.route-view {
+  display: block;
+  overflow-x: visible;
+}
+
+.route-view-player {
+  animation: tab-content-from-left 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.route-view-admin {
+  animation: tab-content-from-right 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.reports-list-view,
+.reports-detail-view {
+  display: grid;
+  gap: 18px;
+  view-transition-name: reports-view;
+}
+
+.reports-to-detail .reports-detail-view {
+  animation: detail-slide-up 300ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.reports-to-list .reports-list-view {
+  animation: list-slide-down 300ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .hero-card,
@@ -232,6 +270,18 @@ h3 {
 
 .section-header.compact {
   margin-bottom: 14px;
+}
+
+.section-header.compact h3 {
+  margin-bottom: 0;
+}
+
+.report-detail-panel .section-header h2 {
+  margin-bottom: 16px;
+}
+
+.detail-back-button {
+  width: max-content;
 }
 
 .step-badge {
@@ -358,8 +408,9 @@ label {
 }
 
 .danger-button {
-  background: #2c0e08;
+  background: #d92d20;
   color: white;
+  box-shadow: 0 14px 30px rgba(217, 45, 32, 0.24);
 }
 
 .button-row {
@@ -390,6 +441,22 @@ label {
   color: var(--ink);
   padding: 12px 14px;
   text-align: left;
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.session-list-row:hover {
+  border-color: rgba(23, 52, 44, 0.24);
+  background: #fffdf6;
+  box-shadow: 0 14px 34px rgba(44, 34, 18, 0.12);
+  transform: translateY(-2px);
+}
+
+.session-list-row:active {
+  transform: translateY(0);
 }
 
 .session-list-row > div {
@@ -401,6 +468,29 @@ label {
   color: var(--muted);
   font-size: 0.86rem;
   font-weight: 800;
+}
+
+.session-row-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  transition: color 180ms ease, transform 180ms ease;
+}
+
+.session-row-action svg {
+  flex: 0 0 auto;
+  stroke-width: 3;
+  transition: transform 180ms ease;
+}
+
+.session-list-row:hover .session-row-action {
+  color: var(--ink);
+  transform: translateX(2px);
+}
+
+.session-list-row:hover .session-row-action svg {
+  transform: translateX(2px);
 }
 
 .session-status {
@@ -418,6 +508,7 @@ label {
 
 .table-card {
   margin-top: 16px;
+  margin-bottom: 20px;
   padding: 14px;
 }
 
@@ -428,6 +519,11 @@ label {
   gap: 14px;
   margin-top: 16px;
   padding: 16px;
+}
+
+.share-card-main {
+  display: grid;
+  gap: 8px;
 }
 
 .share-card h3,
@@ -441,6 +537,7 @@ label {
 }
 
 .share-card small {
+  display: block;
   color: var(--accent-dark);
   font-weight: 800;
 }
@@ -465,11 +562,26 @@ label {
 
 .copy-action {
   position: relative;
-  grid-column: 1 / -1;
 }
 
 .copy-action button {
   width: 100%;
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.copy-action button:hover {
+  border-color: rgba(23, 52, 44, 0.24);
+  background: white;
+  box-shadow: 0 14px 34px rgba(44, 34, 18, 0.12);
+  transform: translateY(-2px);
+}
+
+.copy-action button:active {
+  transform: translateY(0);
 }
 
 .copy-tooltip {
@@ -654,9 +766,9 @@ label {
 
 .opponent-panel {
   border: 1px solid rgba(23, 52, 44, 0.12);
-  border-radius: 26px;
+  border-radius: 16px;
   background: rgba(255, 248, 235, 0.9);
-  padding: 16px;
+  padding: 24px;
   box-shadow: 0 14px 36px rgba(44, 34, 18, 0.1);
 }
 
@@ -668,12 +780,31 @@ label {
 
 .opponent-button {
   min-height: 64px;
-  border-radius: 20px;
-  background: var(--ink);
-  color: var(--paper);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 16px;
+  background: #fffdf6;
+  color: var(--ink);
   font-size: 1.05rem;
   font-weight: 900;
-  box-shadow: 0 12px 28px rgba(23, 52, 44, 0.18);
+  border-color: rgba(23, 52, 44, 0.18);
+  box-shadow: 0 10px 24px rgba(44, 34, 18, 0.03);
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.opponent-button:hover {
+  border-color: rgba(23, 52, 44, 0.24);
+  background: white;
+  box-shadow: 0 14px 30px rgba(44, 34, 18, 0.08);
+  transform: translateY(-2px);
+}
+
+.opponent-button:active {
+  transform: translateY(0);
 }
 
 .card-feed {
@@ -742,7 +873,7 @@ label {
   inset: 0;
   left: 0;
   top: 0;
-  z-index: 50;
+  z-index: 100;
   display: grid;
   place-items: center;
   width: 100vw;
@@ -855,6 +986,80 @@ label {
   }
 }
 
+@keyframes detail-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(32px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes list-slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes tab-content-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-34px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes tab-content-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(34px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+::view-transition-old(reports-view) {
+  animation: view-old-out 220ms ease both;
+}
+
+::view-transition-new(reports-view) {
+  animation: view-new-in 300ms ease both;
+}
+
+@keyframes view-old-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes view-new-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes card-pop {
   from {
     opacity: 0;
@@ -879,7 +1084,42 @@ label {
 
 @media (max-width: 720px) {
   .app-shell {
-    padding-inline: 10px;
+    padding: 14px 10px 90px;
+    padding-bottom: calc(90px + env(safe-area-inset-bottom));
+  }
+
+  .desktop-nav {
+    display: none;
+  }
+
+  .mobile-bottom-nav {
+    position: fixed !important;
+    top: auto !important;
+    right: 0 !important;
+    bottom: 12px !important;
+    bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+    left: 0 !important;
+    z-index: 60;
+    display: flex;
+    width: calc(100% - 24px);
+    max-width: 360px;
+    margin: 0 auto;
+    transform: none;
+  }
+
+  .reports-list-view,
+  .reports-detail-view {
+    view-transition-name: none;
+  }
+
+  .reports-to-detail .reports-detail-view,
+  .reports-to-list .reports-list-view {
+    animation: none;
+  }
+
+  .nav-pill {
+    min-width: 0;
+    flex: 1;
   }
 
   .hero-card,
@@ -899,6 +1139,17 @@ label {
     align-items: flex-start;
   }
 
+  .report-detail-panel > .section-header {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .report-detail-panel > .section-header > div:first-child,
+  .report-detail-panel > .section-header .header-actions,
+  .report-detail-panel > .section-header .danger-button {
+    width: 100%;
+  }
+
   .inline-action,
   .button-row,
   .session-list-row {
@@ -909,6 +1160,7 @@ label {
   .header-actions {
     width: 100%;
     display: grid;
+    margin-bottom: 24px;
     grid-template-columns: 1fr;
   }
 

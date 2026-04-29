@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Copy, Download, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, ChevronUp, Copy, Download, Plus, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { presets } from "../data/defaults";
 import { formatVnd, parseMoneyInput } from "../lib/money";
@@ -23,9 +23,19 @@ type SetupDraft = {
 
 const initialPreset = presets[0];
 
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (callback: () => void) => { finished: Promise<void> };
+};
+
+function runViewTransition(update: () => void) {
+  const transition = (document as ViewTransitionDocument).startViewTransition?.(update);
+  if (!transition) update();
+}
+
 export function AdminView({ slug, store }: AdminViewProps) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [transitionDirection, setTransitionDirection] = useState<"to-detail" | "to-list">("to-detail");
   const sessionRoles = participantSessionRoles(store.state);
   const activeSession = store.state.sessions.find(
     (session) => sessionRoles.has(session.id) && session.slug === slug && session.status === "Active",
@@ -40,9 +50,20 @@ export function AdminView({ slug, store }: AdminViewProps) {
     setIsCreating(false);
   }
 
+  function openSession(sessionId: string) {
+    setTransitionDirection("to-detail");
+    runViewTransition(() => setSelectedSessionId(sessionId));
+  }
+
+  function closeSession() {
+    setTransitionDirection("to-list");
+    runViewTransition(() => setSelectedSessionId(null));
+  }
+
+  const viewKey = isCreating ? "create" : selectedSession ? `detail-${selectedSession.id}` : "list";
+
   return (
-    <div className="screen-stack">
-      <HeroCard slug={slug} activeSession={activeSession} />
+    <div className={`screen-stack reports-${transitionDirection}`} key={viewKey}>
       {isCreating ? (
         <SessionSetup
           slug={slug}
@@ -51,20 +72,27 @@ export function AdminView({ slug, store }: AdminViewProps) {
           onSessionCreated={handleSessionCreated}
         />
       ) : selectedSession ? (
-        <ActiveSessionDashboard
-          session={selectedSession}
-          role={selectedRole ?? "player"}
-          store={store}
-          onBack={() => setSelectedSessionId(null)}
-        />
+        <div className="reports-detail-view">
+          <button className="secondary-button detail-back-button" onClick={closeSession}>
+            <ArrowLeft size={18} /> Back
+          </button>
+          <ActiveSessionDashboard
+            session={selectedSession}
+            role={selectedRole ?? "player"}
+            store={store}
+          />
+        </div>
       ) : (
-        <SessionList
-          state={store.state}
-          slug={slug}
-          sessionRoles={sessionRoles}
-          onCreate={() => setIsCreating(true)}
-          onSelect={setSelectedSessionId}
-        />
+        <div className="reports-list-view">
+          <HeroCard slug={slug} activeSession={activeSession} />
+          <SessionList
+            state={store.state}
+            slug={slug}
+            sessionRoles={sessionRoles}
+            onCreate={() => setIsCreating(true)}
+            onSelect={openSession}
+          />
+        </div>
       )}
     </div>
   );
@@ -133,8 +161,11 @@ function SessionList({
                   {session.date} - {formatVnd(session.feePerPerson)} / match
                 </span>
               </div>
-              <span className={session.status === "Active" ? "session-status active" : "session-status"}>
-                {sessionRoles.get(session.id) === "host" ? session.status : "Joined"}
+              <span className="session-row-action">
+                <span className={session.status === "Active" ? "session-status active" : "session-status"}>
+                  {sessionRoles.get(session.id) === "host" ? session.status : "Joined"}
+                </span>
+                <ChevronRight size={18} aria-hidden="true" />
               </span>
             </button>
           ))}
@@ -373,12 +404,10 @@ function ActiveSessionDashboard({
   session,
   role,
   store,
-  onBack,
 }: {
   session: Session;
   role: "host" | "player";
   store: Store;
-  onBack: () => void;
 }) {
   const isHost = role === "host";
   const shareLink = `${window.location.origin}/${session.slug}/session/${session.id}`;
@@ -405,16 +434,15 @@ function ActiveSessionDashboard({
   }
 
   return (
-    <section className="panel">
+    <section className="panel report-detail-panel">
       <div className="section-header">
         <div>
-          <p className="eyebrow">{session.status} session</p>
+          <p className="eyebrow">
+            {session.status} session since {formatTime(session.createdAt)}
+          </p>
           <h2>{sessionTitle(session)}</h2>
         </div>
         <div className="header-actions">
-          <button className="secondary-button" onClick={onBack}>
-            Back to sessions
-          </button>
           {isHost && session.status === "Active" ? (
             <button className="danger-button" onClick={() => store.endSession(session.id)}>
               End session
@@ -423,37 +451,33 @@ function ActiveSessionDashboard({
         </div>
       </div>
 
-      <div className="metric-grid">
-        <Metric label="Fee / match / person" value={formatVnd(session.feePerPerson)} />
-        <Metric label="Matches logged" value={`${sessionMatches.length}/${Math.floor(maxMatches(session))}`} />
-        <Metric label="Collected" value={formatVnd(collected)} />
-        <Metric label="Profit / loss" value={formatVnd(totalDue - sessionCost)} />
-      </div>
-
       {session.status === "Active" ? (
         <div className="share-card">
-          <div>
+          <div className="share-card-main">
             <p className="eyebrow">Share session</p>
             <h3>Player join link</h3>
             <p>{shareLink}</p>
+            <div className="copy-action">
+              {isCopyTipVisible ? <div className="copy-tooltip">Copied the link with PIN code</div> : null}
+              <button className="secondary-button" onClick={copyShareText}>
+                <Copy size={18} /> Copy link
+              </button>
+            </div>
+          </div>
+          <img
+            className="share-qr"
+            alt="Session QR code"
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(shareLink)}`}
+          />
+          <div className="share-meta">
             {session.pinCode ? <div className="pin-chip">PIN {session.pinCode}</div> : null}
             <small>{store.isRemoteEnabled ? "Supabase sync enabled." : "Local mode only."}</small>
             {store.syncError ? <small>Sync issue: {store.syncError}</small> : null}
           </div>
-          <img
-            alt="Session QR code"
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(shareLink)}`}
-          />
-          <div className="copy-action">
-            {isCopyTipVisible ? <div className="copy-tooltip">Copied the link with PIN code</div> : null}
-            <button className="secondary-button" onClick={copyShareText}>
-              <Copy size={18} /> Copy link
-            </button>
-          </div>
         </div>
       ) : null}
 
-      <div className="table-card">
+      <div className="table-card leaderboard-card">
         <h3>Leaderboard</h3>
         {bills.map((bill) => (
           <div className="leaderboard-player" key={bill.user.id}>
@@ -495,7 +519,14 @@ function ActiveSessionDashboard({
         ))}
       </div>
 
-      <div className="table-card">
+      <div className="metric-grid report-stats-grid">
+        <Metric label="Fee / match / person" value={formatVnd(session.feePerPerson)} />
+        <Metric label="Matches logged" value={`${sessionMatches.length}/${Math.floor(maxMatches(session))}`} />
+        <Metric label="Collected" value={formatVnd(collected)} />
+        <Metric label="Profit / loss" value={formatVnd(totalDue - sessionCost)} />
+      </div>
+
+      <div className="table-card master-log-card">
         <div className="section-header compact">
           <h3>Master log</h3>
           <button className="secondary-button" onClick={() => downloadSummary(session, store.state)}>
