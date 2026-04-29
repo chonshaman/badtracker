@@ -471,11 +471,23 @@ function RecordMatchModal({
       ? currentUser.id
       : selectedOpponent?.id
     : undefined;
-  const stakeCaption = scoreResult
-    ? scoreResult.playerWon
-      ? `${scoreResult.formattedScore}: ${currentUser.name} wins.`
-      : `${scoreResult.formattedScore}: ${currentUser.name} loses.`
-    : "";
+  const stakeCaption = scoreResult ? (
+    scoreResult.playerWon ? (
+      <>
+        {scoreResult.formattedScore}:{" "}
+        <span className="stake-caption-win">{currentUser.name} (You) wins</span>
+        {", "}
+        <span className="stake-caption-loss">{selectedOpponent?.name ?? "Opponent"} loses.</span>
+      </>
+    ) : (
+      <>
+        {scoreResult.formattedScore}:{" "}
+        <span className="stake-caption-loss">{currentUser.name} (You) loses</span>
+        {", "}
+        <span className="stake-caption-win">{selectedOpponent?.name ?? "Opponent"} wins.</span>
+      </>
+    )
+  ) : null;
 
   return createPortal(
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Record match">
@@ -544,7 +556,13 @@ function RecordMatchModal({
         >
           <div className="stake-control-copy">
             <span>Loser pay all (kèo độ)</span>
-            <p className={stakeCaption ? "stake-caption visible" : "stake-caption"} aria-live="polite">
+            <p
+              className={[
+                "stake-caption",
+                stakeCaption ? "visible" : "",
+              ].filter(Boolean).join(" ")}
+              aria-live="polite"
+            >
               {stakeCaption || "Score decides who pays."}
             </p>
           </div>

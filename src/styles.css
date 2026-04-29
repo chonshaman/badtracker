@@ -1586,6 +1586,20 @@ label {
   transform: translateY(0);
 }
 
+.stake-caption .stake-caption-win,
+.stake-control-copy .stake-caption .stake-caption-win {
+  color: #23723f;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.stake-caption .stake-caption-loss,
+.stake-control-copy .stake-caption .stake-caption-loss {
+  color: #af3a1f;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
 .stake-icon-toggle {
   width: 44px;
   height: 44px;
