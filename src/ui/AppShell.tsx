@@ -1,9 +1,10 @@
 import { useLayoutEffect } from "react";
 import { Link, useLocation, useMatch, useParams } from "react-router-dom";
 import { createPortal } from "react-dom";
+import { useStore } from "../lib/storeContext";
 import { AdminView } from "./AdminView";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { PlayerView } from "./PlayerView";
-import { useTrackerStore } from "../lib/store";
 
 export function AppShell() {
   const location = useLocation();
@@ -15,7 +16,7 @@ export function AppShell() {
   const reportSessionId = adminDetailMatch?.params.reportSessionId;
   const sessionId = sessionMatch?.params.sessionId;
   const shouldCreateSession = new URLSearchParams(location.search).get("create") === "1";
-  const store = useTrackerStore();
+  const store = useStore();
   const activeSession = sessionId
     ? store.state.sessions.find((session) => session.id === sessionId && session.status === "Active")
     : store.state.sessions.find(
@@ -36,18 +37,20 @@ export function AppShell() {
           slug={slug}
         />
 
-        <div className={`route-view route-view-${mode}`}>
-          {mode === "admin" ? (
-            <AdminView
-              slug={slug}
-              store={store}
-              initialSessionId={reportSessionId}
-              initialCreate={shouldCreateSession}
-            />
-          ) : (
-            <PlayerView slug={slug} sessionId={sessionId} store={store} activeSession={activeSession} />
-          )}
-        </div>
+        <ErrorBoundary resetKey={location.pathname}>
+          <div className={`route-view route-view-${mode}`}>
+            {mode === "admin" ? (
+              <AdminView
+                slug={slug}
+                store={store}
+                initialSessionId={reportSessionId}
+                initialCreate={shouldCreateSession}
+              />
+            ) : (
+              <PlayerView slug={slug} sessionId={sessionId} store={store} activeSession={activeSession} />
+            )}
+          </div>
+        </ErrorBoundary>
       </main>
       {createPortal(
         <MainNav

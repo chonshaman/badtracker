@@ -146,7 +146,9 @@ export function AdminView({ slug, store, initialSessionId, initialCreate = false
               state={store.state}
               slug={slug}
               sessionRoles={sessionRoles}
+              isRemoteEnabled={store.isRemoteEnabled}
               onCreate={() => setIsCreating(true)}
+              onSeedDefaultUsers={store.seedDefaultUsers}
               onSelect={openSession}
             />
           </div>
@@ -210,13 +212,17 @@ function SessionList({
   state,
   slug,
   sessionRoles,
+  isRemoteEnabled,
   onCreate,
+  onSeedDefaultUsers,
   onSelect,
 }: {
   state: TrackerState;
   slug: string;
   sessionRoles: Map<string, "host" | "player">;
+  isRemoteEnabled: boolean;
   onCreate: () => void;
+  onSeedDefaultUsers: () => void;
   onSelect: (sessionId: string) => void;
 }) {
   const sessions = state.sessions
@@ -235,6 +241,18 @@ function SessionList({
         </button>
       </div>
 
+      {isRemoteEnabled && state.users.length === 0 ? (
+        <div className="seed-users-callout">
+          <div>
+            <strong>No players in this Supabase project yet.</strong>
+            <span>Add the default player list only if this is your own project.</span>
+          </div>
+          <button type="button" className="secondary-button" onClick={onSeedDefaultUsers}>
+            <Plus size={18} /> Seed players
+          </button>
+        </div>
+      ) : null}
+
       {sessions.length === 0 ? (
         <p className="empty-state">No sessions yet.</p>
       ) : (
@@ -249,7 +267,7 @@ function SessionList({
               <div>
                 <strong>{sessionTitle(session)}</strong>
                 <span>
-                  {session.date} - {formatVnd(session.feePerPerson)} / match
+                  {session.date} - {formatVnd(calculateFee(session))} / match
                 </span>
               </div>
               <span className="session-row-action">
@@ -287,6 +305,7 @@ function SessionSetup({
   const [hiddenUserIds, setHiddenUserIds] = useState<string[]>([]);
   const [setupAddedUsers, setSetupAddedUsers] = useState<User[]>([]);
   const [guestName, setGuestName] = useState("");
+  const [setupError, setSetupError] = useState("");
   const guestAddLock = useRef(false);
   const [draft, setDraft] = useState<SetupDraft>(() => {
     const feePerPerson = calculateFee(initialPreset);
@@ -315,15 +334,22 @@ function SessionSetup({
     if (!trimmed || guestAddLock.current) return;
     guestAddLock.current = true;
 
-    const existingUser = store.state.users.find(
+    const existingUser = setupUsers.find(
       (user) => user.name.trim().toLowerCase() === trimmed.toLowerCase(),
     );
     if (existingUser) {
+      if (selectedUsers.includes(existingUser.id)) {
+        setSetupError(`A player named ${existingUser.name} is already in this session.`);
+        setGuestName("");
+        guestAddLock.current = false;
+        return;
+      }
       setSelectedUsers((current) =>
         current.includes(existingUser.id) ? current : [...current, existingUser.id],
       );
       setHiddenUserIds((current) => current.filter((id) => id !== existingUser.id));
       setGuestName("");
+      setSetupError("");
       guestAddLock.current = false;
       return;
     }
@@ -339,6 +365,7 @@ function SessionSetup({
     setSelectedUsers((current) => Array.from(new Set([...current, user.id])));
     setHiddenUserIds((current) => current.filter((id) => id !== user.id));
     setGuestName("");
+    setSetupError("");
     window.setTimeout(() => {
       guestAddLock.current = false;
     }, 250);
@@ -346,6 +373,11 @@ function SessionSetup({
 
   function launchSession() {
     const sessionId = `s-${crypto.randomUUID()}`;
+    const duplicateName = duplicateSelectedUserName(selectedUsers, setupUsers);
+    if (duplicateName) {
+      setSetupError(`A player named ${duplicateName} is already in this session.`);
+      return;
+    }
     const uniqueSelectedUsers = uniqueUserIdsByName(selectedUsers, setupUsers);
     const trimmedSessionName = sessionName.trim();
     const session: Session = {
@@ -420,6 +452,7 @@ function SessionSetup({
 
       {step === 2 && (
         <div className="roster-list">
+          {setupError ? <p className="form-error">{setupError}</p> : null}
           {setupPlayers.map((user) => {
             const isSelected = selectedUsers.includes(user.id);
             return (
@@ -573,6 +606,7 @@ function ActiveSessionDashboard({
   const sessionMatches = store.state.matches
     .filter((match) => match.sessionId === session.id)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const duplicateRosterNames = duplicateSessionRosterNames(session.id, store.state);
   const totalDue = bills.reduce((sum, bill) => sum + bill.totalDue, 0);
   const collected = bills.filter((bill) => bill.paid).reduce((sum, bill) => sum + bill.totalDue, 0);
   const sessionCost = session.courtPrice + (sessionMatches.length * session.shuttlePrice) / session.shuttlesPerTube;
@@ -731,6 +765,11 @@ function ActiveSessionDashboard({
             <span>{formatVnd(courtShare)} court share</span>
           </div>
         </div>
+        {duplicateRosterNames.length > 0 ? (
+          <p className="form-error duplicate-roster-warning">
+            Duplicate player names in this session: {duplicateRosterNames.join(", ")}. Rename or remove duplicates to avoid merged bills.
+          </p>
+        ) : null}
         {isHost ? (
           <form
             className="participant-add-row"
@@ -1491,6 +1530,33 @@ function uniqueUserIdsByName(userIds: string[], users: User[]): string[] {
     seenNames.add(key);
     return true;
   });
+}
+
+function duplicateSelectedUserName(userIds: string[], users: User[]): string | undefined {
+  const seenNames = new Set<string>();
+  for (const userId of userIds) {
+    const user = users.find((candidate) => candidate.id === userId);
+    if (!user) continue;
+    const key = user.name.trim().toLowerCase();
+    if (seenNames.has(key)) return user.name;
+    seenNames.add(key);
+  }
+  return undefined;
+}
+
+function duplicateSessionRosterNames(sessionId: string, state: TrackerState): string[] {
+  const seenNames = new Set<string>();
+  const duplicateNames = new Set<string>();
+  state.roster
+    .filter((entry) => entry.sessionId === sessionId)
+    .forEach((entry) => {
+      const user = state.users.find((candidate) => candidate.id === entry.userId);
+      if (!user) return;
+      const key = user.name.trim().toLowerCase();
+      if (seenNames.has(key)) duplicateNames.add(user.name);
+      seenNames.add(key);
+    });
+  return Array.from(duplicateNames);
 }
 
 function downloadSummary(session: Session, state: TrackerState) {

@@ -777,6 +777,28 @@ label {
   margin-top: 16px;
 }
 
+.seed-users-callout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fffdf6;
+  padding: 14px;
+}
+
+.seed-users-callout div {
+  display: grid;
+  gap: 4px;
+}
+
+.seed-users-callout span {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
 .session-list-row {
   width: 100%;
   min-height: 74px;
@@ -1259,6 +1281,10 @@ label {
   margin: -4px 0 0;
   color: var(--accent-dark);
   font-weight: 800;
+}
+
+.duplicate-roster-warning {
+  margin: 0 0 12px;
 }
 
 .icon-button,
@@ -2005,6 +2031,7 @@ label {
 
   .inline-action,
   .button-row,
+  .seed-users-callout,
   .session-list-row {
     display: grid;
     grid-template-columns: 1fr;

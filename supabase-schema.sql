@@ -80,10 +80,10 @@ drop policy if exists "Public read users" on users;
 drop policy if exists "Public insert users" on users;
 drop policy if exists "Public update users" on users;
 drop policy if exists "Public delete users" on users;
+drop policy if exists "Authenticated can update users" on users;
+drop policy if exists "Authenticated can delete users" on users;
 create policy "Public read users" on users for select using (true);
 create policy "Public insert users" on users for insert with check (true);
-create policy "Public update users" on users for update using (true) with check (true);
-create policy "Public delete users" on users for delete using (true);
 
 drop policy if exists "Public read sessions" on sessions;
 drop policy if exists "Public insert sessions" on sessions;
@@ -223,6 +223,8 @@ drop policy if exists "Participants can read session roster" on session_roster;
 drop policy if exists "Participants can insert session roster" on session_roster;
 drop policy if exists "Participants can update session roster" on session_roster;
 drop policy if exists "Participants can delete session roster" on session_roster;
+drop policy if exists "Hosts can update session roster" on session_roster;
+drop policy if exists "Hosts can delete session roster" on session_roster;
 create policy "Participants can read session roster" on session_roster for select using (
   exists (
     select 1
@@ -239,12 +241,13 @@ create policy "Participants can insert session roster" on session_roster for ins
       and session_participants.user_id = auth.uid()
   )
 );
-create policy "Participants can update session roster" on session_roster for update using (
+create policy "Hosts can update session roster" on session_roster for update using (
   exists (
     select 1
     from session_participants
     where session_participants.session_id = session_roster.session_id
       and session_participants.user_id = auth.uid()
+      and session_participants.role = 'host'
   )
 ) with check (
   exists (
@@ -252,14 +255,16 @@ create policy "Participants can update session roster" on session_roster for upd
     from session_participants
     where session_participants.session_id = session_roster.session_id
       and session_participants.user_id = auth.uid()
+      and session_participants.role = 'host'
   )
 );
-create policy "Participants can delete session roster" on session_roster for delete using (
+create policy "Hosts can delete session roster" on session_roster for delete using (
   exists (
     select 1
     from session_participants
     where session_participants.session_id = session_roster.session_id
       and session_participants.user_id = auth.uid()
+      and session_participants.role = 'host'
   )
 );
 

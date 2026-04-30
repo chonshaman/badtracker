@@ -129,25 +129,7 @@ export async function loadRemoteState(fallbackUsers: User[]): Promise<TrackerSta
     request<RemoteMatch[]>("matches?select=*"),
   ]);
 
-  if (users.length === 0 && fallbackUsers.length > 0) {
-    await request<User[]>("users", {
-      method: "POST",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify(fallbackUsers),
-    });
-  }
-
   const mergedUsers = mergeFallbackUsers(users, fallbackUsers, roster);
-  const missingFallbackUsers = mergedUsers.filter(
-    (user) => !users.some((existingUser) => existingUser.id === user.id),
-  );
-  if (missingFallbackUsers.length > 0) {
-    await request("users", {
-      method: "POST",
-      headers: { Prefer: "resolution=ignore-duplicates" },
-      body: JSON.stringify(missingFallbackUsers),
-    });
-  }
 
   return {
     users: mergedUsers,
@@ -156,6 +138,17 @@ export async function loadRemoteState(fallbackUsers: User[]): Promise<TrackerSta
     participants: participants.map(fromRemoteParticipant),
     matches: matches.map(fromRemoteMatch),
   };
+}
+
+export async function seedDefaultUsers(fallbackUsers: User[]) {
+  const existing = await request<User[]>("users?select=*");
+  if (existing.length > 0 || fallbackUsers.length === 0) return;
+
+  await request("users", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(fallbackUsers),
+  });
 }
 
 export function subscribeRemoteChanges(onChange: () => void): () => void {

@@ -19,6 +19,7 @@ import {
   remoteUpdateMatchDuration,
   remoteUpdateTotalCourtTime,
   remoteVerifySessionPin,
+  seedDefaultUsers as remoteSeedDefaultUsers,
   subscribeRemoteChanges,
 } from "./remoteStore";
 import type { Match, RosterEntry, Session, SessionParticipant, SessionStatus, TrackerState, User } from "../types";
@@ -53,10 +54,12 @@ export function useTrackerStore() {
   const [state, setState] = useState<TrackerState>(() => readState());
   const [isSyncing, setIsSyncing] = useState(isRemoteEnabled);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const stateRef = useRef(state);
   const pendingRemoteWrites = useRef(0);
   const softDeletedSessionIds = useRef(new Set<string>());
 
   useEffect(() => {
+    stateRef.current = state;
     writeState(state);
   }, [state]);
 
@@ -89,6 +92,7 @@ export function useTrackerStore() {
       try {
         const remoteState = applyLocalOnlyDeletes(await loadRemoteState(defaultState.users));
         if (!isMounted) return;
+        stateRef.current = remoteState;
         setState(remoteState);
         writeState(remoteState);
         setSyncError(null);
@@ -101,7 +105,7 @@ export function useTrackerStore() {
     }
 
     void refreshRemoteState();
-    const intervalId = window.setInterval(refreshRemoteState, 1500);
+    const intervalId = window.setInterval(refreshRemoteState, 30_000);
     const unsubscribeRemoteChanges = subscribeRemoteChanges(() => {
       void refreshRemoteState();
     });
@@ -115,7 +119,8 @@ export function useTrackerStore() {
 
   const commit = (updater: (current: TrackerState) => TrackerState) => {
     setState((current) => {
-      const next = updater(current);
+      const next = updater(stateRef.current ?? current);
+      stateRef.current = next;
       writeState(next);
       if ("BroadcastChannel" in window) {
         const channel = new BroadcastChannel(channelName);
@@ -138,6 +143,7 @@ export function useTrackerStore() {
     try {
       await operation();
       const remoteState = applyLocalOnlyDeletes(await loadRemoteState(defaultState.users));
+      stateRef.current = remoteState;
       setState(remoteState);
       writeState(remoteState);
       setSyncError(null);
@@ -150,6 +156,7 @@ export function useTrackerStore() {
 
   const refreshAfterRemoteWrite = async () => {
     const remoteState = applyLocalOnlyDeletes(await loadRemoteState(defaultState.users));
+    stateRef.current = remoteState;
     setState(remoteState);
     writeState(remoteState);
     setSyncError(null);
@@ -185,6 +192,9 @@ export function useTrackerStore() {
       } catch {
         return "unknown" as const;
       }
+    },
+    seedDefaultUsers: () => {
+      void runRemote(() => remoteSeedDefaultUsers(defaultState.users));
     },
     addUser: (user: User) => {
       commit((current) =>
@@ -338,61 +348,69 @@ export function useTrackerStore() {
       void runRemote(() => remoteUpdateTotalCourtTime(sessionId, totalCourtTime));
     },
     togglePaid: (sessionId: string, userId: string) => {
-      const targetUser = state.users.find((user) => user.id === userId);
-      const matchingUserIds = state.users
-        .filter(
-          (user) =>
-            targetUser &&
-            user.name.trim().toLowerCase() === targetUser.name.trim().toLowerCase(),
-        )
-        .map((user) => user.id);
-      const currentPaid = state.roster.find(
-        (entry) => entry.sessionId === sessionId && matchingUserIds.includes(entry.userId),
-      )?.paid;
-      const nextPaid = !currentPaid;
+      let nextPaid = false;
+      let matchingUserIds: string[] = [];
 
-      commit((current) => ({
-        ...current,
-        roster: current.roster.map((entry) => {
-          const targetUser = current.users.find((user) => user.id === userId);
+      commit((current) => {
+        const targetUser = current.users.find((user) => user.id === userId);
+        matchingUserIds = current.users
+          .filter(
+            (user) =>
+              targetUser &&
+              user.name.trim().toLowerCase() === targetUser.name.trim().toLowerCase(),
+          )
+          .map((user) => user.id);
+        const currentPaid = current.roster.find(
+          (candidate) => candidate.sessionId === sessionId && matchingUserIds.includes(candidate.userId),
+        )?.paid;
+        nextPaid = !(currentPaid ?? false);
+
+        return {
+          ...current,
+          roster: current.roster.map((entry) => {
           const entryUser = current.users.find((user) => user.id === entry.userId);
           const isSameName =
             targetUser &&
             entryUser &&
             targetUser.name.trim().toLowerCase() === entryUser.name.trim().toLowerCase();
 
-          return entry.sessionId === sessionId && isSameName ? { ...entry, paid: !entry.paid } : entry;
-        }),
-      }));
+            return entry.sessionId === sessionId && isSameName ? { ...entry, paid: nextPaid } : entry;
+          }),
+        };
+      });
       void runRemote(() => remoteSetPaid(sessionId, matchingUserIds, nextPaid));
     },
     togglePresent: (sessionId: string, userId: string) => {
-      const targetUser = state.users.find((user) => user.id === userId);
-      const matchingUserIds = state.users
-        .filter(
-          (user) =>
-            targetUser &&
-            user.name.trim().toLowerCase() === targetUser.name.trim().toLowerCase(),
-        )
-        .map((user) => user.id);
-      const currentPresent = state.roster.find(
-        (entry) => entry.sessionId === sessionId && matchingUserIds.includes(entry.userId),
-      )?.isPresent;
-      const nextPresent = !currentPresent;
+      let nextPresent = false;
+      let matchingUserIds: string[] = [];
 
-      commit((current) => ({
-        ...current,
-        roster: current.roster.map((entry) => {
-          const targetUser = current.users.find((user) => user.id === userId);
+      commit((current) => {
+        const targetUser = current.users.find((user) => user.id === userId);
+        matchingUserIds = current.users
+          .filter(
+            (user) =>
+              targetUser &&
+              user.name.trim().toLowerCase() === targetUser.name.trim().toLowerCase(),
+          )
+          .map((user) => user.id);
+        const currentPresent = current.roster.find(
+          (candidate) => candidate.sessionId === sessionId && matchingUserIds.includes(candidate.userId),
+        )?.isPresent;
+        nextPresent = !(currentPresent ?? false);
+
+        return {
+          ...current,
+          roster: current.roster.map((entry) => {
           const entryUser = current.users.find((user) => user.id === entry.userId);
           const isSameName =
             targetUser &&
             entryUser &&
             targetUser.name.trim().toLowerCase() === entryUser.name.trim().toLowerCase();
 
-          return entry.sessionId === sessionId && isSameName ? { ...entry, isPresent: nextPresent } : entry;
-        }),
-      }));
+            return entry.sessionId === sessionId && isSameName ? { ...entry, isPresent: nextPresent } : entry;
+          }),
+        };
+      });
       void runRemote(() => remoteSetPresent(sessionId, matchingUserIds, nextPresent));
     },
     removeSessionPlayer: (sessionId: string, userId: string) => {
