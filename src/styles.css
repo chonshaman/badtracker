@@ -631,9 +631,7 @@ label {
   flex-basis: 18px;
   border: 2px solid rgba(23, 52, 44, 0.28);
   border-radius: 50%;
-  background:
-    radial-gradient(circle, #1cad63 0 42%, transparent 45%),
-    #fffdf6;
+  background: #fffdf6;
   transform: scale(1);
   transition:
     border-color 180ms ease,
@@ -654,6 +652,9 @@ label {
 
 .setup-host-toggle:has(input:checked) .radio-dot {
   border-color: #1cad63;
+  background:
+    radial-gradient(circle, #1cad63 0 42%, transparent 45%),
+    #fffdf6;
   box-shadow: 0 0 0 4px rgba(28, 173, 99, 0.1);
   transform: scale(1.08);
 }

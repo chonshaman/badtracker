@@ -442,7 +442,7 @@ function PlayerDebtHeader({
       <h1>{formatVnd(totalDue)}</h1>
       <div className="debt-breakdown" aria-label="Debt breakdown">
         <span>{playerFeeLabel(session)}: {formatVnd(playerFeeMetric)}</span>
-        <span>Shuttle Cost / Match: {formatVnd(shuttleCostPerMatch)}</span>
+        <span>Shuttle cost: {formatVnd(shuttleCostPerMatch)}</span>
       </div>
       <Link className="session-detail-link" to={`/${session.slug}/admin/${session.id}`} state={{ backTo, playerId }}>
         <span>
@@ -832,7 +832,7 @@ function sessionTitle(session: Session): string {
 }
 
 function playerFeeLabel(session: Session): string {
-  return session.billingMethod === "casual" ? "Fixed Price/match" : "Court share/person";
+  return session.billingMethod === "casual" ? "Match Price" : "Court share";
 }
 
 function normalizeScore(score: string): string | undefined {

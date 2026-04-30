@@ -309,7 +309,7 @@ function SessionSetup({
   const [selectedPreset, setSelectedPreset] = useState(initialPreset.id);
   const [selectedUsers, setSelectedUsers] = useState<string[]>(
     uniqueUsersByName(
-      store.state.users.filter((user) => user.type === "Regular"),
+      store.state.users.filter((user) => user.type === "Regular" && !isHostPlaceholderUser(user)),
     ).map((u) => u.id),
   );
   const [hostUserIds, setHostUserIds] = useState<string[]>([]);
@@ -326,7 +326,7 @@ function SessionSetup({
   const computedFee = calculateFee(draft);
   const setupUsers = uniqueUsersByName([...store.state.users, ...setupAddedUsers]);
   const setupPlayers = setupUsers.filter(
-    (user) => !hiddenUserIds.includes(user.id),
+    (user) => !hiddenUserIds.includes(user.id) && !isHostPlaceholderUser(user),
   );
 
   function applyPreset(presetId: string) {
@@ -1749,6 +1749,10 @@ function uniqueUserIdsByName(userIds: string[], users: User[]): string[] {
     seenNames.add(key);
     return true;
   });
+}
+
+function isHostPlaceholderUser(user: User): boolean {
+  return user.name.trim().toLowerCase() === "host";
 }
 
 function duplicateSelectedUserName(userIds: string[], users: User[]): string | undefined {
