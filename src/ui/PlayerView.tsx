@@ -1,4 +1,4 @@
-import { Check, ChevronDown, ChevronRight, ToggleLeft, ToggleRight, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Plus, ToggleLeft, ToggleRight, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
@@ -109,9 +109,9 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
       <section className="player-empty">
         <p className="eyebrow">Court closed</p>
         <h1>No active session.</h1>
-        <p>Ask the host to start a session before recording matches.</p>
-        <Link className="primary-button" to={`/${slug}/admin`}>
-          Create new session
+        <p>Ask your host to join a session, or create your own.</p>
+        <Link className="primary-button empty-session-action" to={`/${slug}/admin`}>
+          <Plus size={18} /> New session
         </Link>
       </section>
     );

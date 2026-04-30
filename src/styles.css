@@ -707,6 +707,7 @@ label {
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 0.02em;
+  text-decoration: none;
   transition:
     border-color 180ms ease,
     background 180ms ease,
