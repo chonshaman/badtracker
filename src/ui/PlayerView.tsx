@@ -33,7 +33,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
   }, [playerId, playerStorageKey]);
 
   useEffect(() => {
-    if (!sessionId || !store.isRemoteEnabled || activeSession) {
+    if (!sessionId || !store.isRemoteEnabled) {
       setSessionLinkStatus("unknown");
       return;
     }
@@ -47,7 +47,27 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
     return () => {
       isMounted = false;
     };
-  }, [activeSession, sessionId, store.isRemoteEnabled]);
+  }, [sessionId, store.isRemoteEnabled]);
+
+  if (sessionId && store.isRemoteEnabled && sessionLinkStatus === "missing") {
+    return (
+      <SessionMissingState
+        title="Session no longer exists."
+        message="This session is no longer in the database. It may have been deleted by the host."
+        slug={slug}
+      />
+    );
+  }
+
+  if (sessionId && store.isRemoteEnabled && sessionLinkStatus === "closed" && !activeSession) {
+    return (
+      <SessionMissingState
+        title="Session is closed."
+        message="This session is already closed, so players can no longer enter from this link."
+        slug={slug}
+      />
+    );
+  }
 
   if (!activeSession) {
     if (store.isRemoteEnabled && store.isSyncing) {
@@ -81,16 +101,6 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
             <h1>Looking up court.</h1>
             <p>Confirming this shared link with Supabase.</p>
           </section>
-        );
-      }
-
-      if (sessionLinkStatus === "missing") {
-        return (
-          <SessionMissingState
-            title="Session no longer exists."
-            message="This session is no longer in the database. It may have been deleted by the host."
-            slug={slug}
-          />
         );
       }
 
@@ -223,6 +233,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const latestJoinedSession = joinedSessions[0] ?? activeSession;
   const latestPricePerMatch = calculateFee(latestJoinedSession);
+  const playerReturnPath = `/${activeSession.slug}/session/${activeSession.id}`;
   const previousSessions = store.state.sessions
     .filter(
       (session) =>
@@ -242,6 +253,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
         courtFee={courtFee}
         pricePerMatch={latestPricePerMatch}
         matchesPlayed={myMatches.length}
+        backTo={playerReturnPath}
       />
 
       <section className="opponent-panel">
@@ -273,6 +285,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
               key={match.id}
               match={match}
               number={myMatches.length - index}
+              session={activeSession}
               currentUser={currentUser}
               users={store.state.users}
             />
@@ -284,6 +297,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
         currentUserIds={currentUserIds}
         sessions={previousSessions}
         store={store}
+        backTo={playerReturnPath}
       />
 
       {selectedOpponentId && (
@@ -340,6 +354,7 @@ function PlayerDebtHeader({
   courtFee,
   pricePerMatch,
   matchesPlayed,
+  backTo,
 }: {
   session: Session;
   playerName: string;
@@ -347,6 +362,7 @@ function PlayerDebtHeader({
   courtFee: number;
   pricePerMatch: number;
   matchesPlayed: number;
+  backTo: string;
 }) {
   const previousTotalDue = useRef(totalDue);
   const [flash, setFlash] = useState<"up" | "down" | null>(null);
@@ -370,7 +386,7 @@ function PlayerDebtHeader({
         <span>Court Fee: {formatVnd(courtFee)}</span>
         <span>Price/Match: {formatVnd(pricePerMatch)}</span>
       </div>
-      <Link className="session-detail-link" to={`/${session.slug}/admin/${session.id}`}>
+      <Link className="session-detail-link" to={`/${session.slug}/admin/${session.id}`} state={{ backTo }}>
         <span>
           <strong>{sessionTitle(session)}</strong>
           <small>{session.date}</small>
@@ -385,10 +401,12 @@ function PreviousSessions({
   currentUserIds,
   sessions,
   store,
+  backTo,
 }: {
   currentUserIds: string[];
   sessions: Session[];
   store: Store;
+  backTo: string;
 }) {
   if (sessions.length === 0) return null;
 
@@ -404,7 +422,7 @@ function PreviousSessions({
         }).find((candidate) => candidate.userIds.some((userId) => currentUserIds.includes(userId)));
 
         return (
-          <Link className="previous-session-card" key={session.id} to={`/${session.slug}/admin/${session.id}`}>
+          <Link className="previous-session-card" key={session.id} to={`/${session.slug}/admin/${session.id}`} state={{ backTo }}>
             <div>
               <strong>{sessionTitle(session)}</strong>
               <span>{session.date}</span>
@@ -707,11 +725,13 @@ function UserDropdown({
 function MatchCard({
   match,
   number,
+  session,
   currentUser,
   users,
 }: {
   match: Match;
   number: number;
+  session: Session;
   currentUser: User;
   users: User[];
 }) {
@@ -734,7 +754,7 @@ function MatchCard({
       {match.isStake ? (
         <small>{isStakeWinner ? "🏆 Won the stakes! Fee: 0 VND" : "🔥 Lost the stakes. Total charged: 2x"}</small>
       ) : (
-        <small>Status: Recorded</small>
+        <small>Status: Recorded · {sessionTitle(session)}</small>
       )}
     </article>
   );

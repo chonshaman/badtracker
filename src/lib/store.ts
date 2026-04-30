@@ -118,18 +118,16 @@ export function useTrackerStore() {
   }, []);
 
   const commit = (updater: (current: TrackerState) => TrackerState) => {
-    setState((current) => {
-      const next = updater(stateRef.current ?? current);
-      stateRef.current = next;
-      writeState(next);
-      if ("BroadcastChannel" in window) {
-        const channel = new BroadcastChannel(channelName);
-        channel.postMessage({ type: "updated" });
-        channel.close();
-      }
-      window.dispatchEvent(new StorageEvent("storage", { key: storageKey }));
-      return next;
-    });
+    const next = updater(stateRef.current);
+    stateRef.current = next;
+    writeState(next);
+    if ("BroadcastChannel" in window) {
+      const channel = new BroadcastChannel(channelName);
+      channel.postMessage({ type: "updated" });
+      channel.close();
+    }
+    window.dispatchEvent(new StorageEvent("storage", { key: storageKey }));
+    setState(next);
   };
 
   const applyLocalOnlyDeletes = (nextState: TrackerState): TrackerState => {

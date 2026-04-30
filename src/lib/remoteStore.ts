@@ -129,14 +129,18 @@ export async function loadRemoteState(fallbackUsers: User[]): Promise<TrackerSta
     request<RemoteMatch[]>("matches?select=*"),
   ]);
 
-  const mergedUsers = mergeFallbackUsers(users, fallbackUsers, roster);
+  const remoteSessionIds = new Set(sessions.map((session) => session.id));
+  const sessionRoster = roster.filter((entry) => remoteSessionIds.has(entry.session_id));
+  const sessionParticipants = participants.filter((participant) => remoteSessionIds.has(participant.session_id));
+  const sessionMatches = matches.filter((match) => remoteSessionIds.has(match.session_id));
+  const mergedUsers = mergeFallbackUsers(users, fallbackUsers, sessionRoster);
 
   return {
     users: mergedUsers,
     sessions: sessions.map(fromRemoteSession),
-    roster: roster.map(fromRemoteRoster),
-    participants: participants.map(fromRemoteParticipant),
-    matches: matches.map(fromRemoteMatch),
+    roster: sessionRoster.map(fromRemoteRoster),
+    participants: sessionParticipants.map(fromRemoteParticipant),
+    matches: sessionMatches.map(fromRemoteMatch),
   };
 }
 

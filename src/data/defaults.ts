@@ -23,12 +23,11 @@ export const presets: Preset[] = [
 
 export const defaultState: TrackerState = {
   users: [
-    { id: "u-host", name: "Host", role: "Admin", type: "Regular" },
     { id: "u-nhat", name: "Nhat", role: "Player", type: "Regular" },
     { id: "u-hung", name: "Hung", role: "Player", type: "Regular" },
     { id: "u-tuan", name: "Tuan", role: "Player", type: "Regular" },
-    { id: "u-minh", name: "Minh", role: "Player", type: "Regular" },
-    { id: "u-linh", name: "Linh", role: "Player", type: "Regular" },
+    { id: "u-duy", name: "Duy", role: "Player", type: "Regular" },
+    { id: "u-chon", name: "Chồn", role: "Player", type: "Regular" },
   ],
   sessions: [],
   roster: [],

@@ -1,6 +1,7 @@
 import { createPortal } from "react-dom";
 import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Download, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { presets } from "../data/defaults";
 import { formatVnd, parseMoneyInput } from "../lib/money";
 import type { DeletedSessionSnapshot } from "../lib/store";
@@ -21,6 +22,7 @@ type AdminViewProps = {
   store: Store;
   initialSessionId?: string;
   initialCreate?: boolean;
+  detailBackTo?: string;
 };
 
 type SetupDraft = {
@@ -43,7 +45,8 @@ function runViewTransition(update: () => void) {
   if (!transition) update();
 }
 
-export function AdminView({ slug, store, initialSessionId, initialCreate = false }: AdminViewProps) {
+export function AdminView({ slug, store, initialSessionId, initialCreate = false, detailBackTo }: AdminViewProps) {
+  const navigate = useNavigate();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(initialSessionId ?? null);
   const [isCreating, setIsCreating] = useState(initialCreate);
   const [transitionDirection, setTransitionDirection] = useState<"to-detail" | "to-list">("to-detail");
@@ -94,6 +97,10 @@ export function AdminView({ slug, store, initialSessionId, initialCreate = false
   }
 
   function closeSession() {
+    if (detailBackTo) {
+      navigate(detailBackTo);
+      return;
+    }
     setTransitionDirection("to-list");
     runViewTransition(() => setSelectedSessionId(null));
   }
@@ -594,6 +601,10 @@ function ActiveSessionDashboard({
   const [isEndConfirmOpen, setIsEndConfirmOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [participantName, setParticipantName] = useState("");
+  const [pendingRemovedPlayerIds, setPendingRemovedPlayerIds] = useState<string[]>([]);
+  const [collapsingRemovedPlayerIds, setCollapsingRemovedPlayerIds] = useState<string[]>([]);
+  const removePlayerTimersRef = useRef<Record<string, number>>({});
+  const collapsePlayerTimersRef = useRef<Record<string, number>>({});
   const bills = playerBills({
     session,
     users: store.state.users,
@@ -639,6 +650,14 @@ function ActiveSessionDashboard({
   useEffect(() => {
     if (!isTotalMatchesEditing) setTotalMatchesDraft(formatStatNumber(maxMatches(session)));
   }, [isTotalMatchesEditing, session]);
+
+  useEffect(
+    () => () => {
+      Object.values(removePlayerTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
+      Object.values(collapsePlayerTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
+    },
+    [],
+  );
 
   function submitCourtPrice() {
     const nextCourtPrice = parseCourtMoneyInput(courtPriceDraft);
@@ -703,6 +722,34 @@ function ActiveSessionDashboard({
     };
     store.joinSessionGuest(user, session.id);
     setParticipantName("");
+  }
+
+  function scheduleRemovePlayer(userId: string) {
+    const bill = bills.find((candidate) => candidate.user.id === userId);
+    if (bill?.isHost || pendingRemovedPlayerIds.includes(userId)) return;
+    if (pendingRemovedPlayerIds.includes(userId)) return;
+    setPendingRemovedPlayerIds((current) => [...current, userId]);
+    removePlayerTimersRef.current[userId] = window.setTimeout(() => {
+      delete removePlayerTimersRef.current[userId];
+      setCollapsingRemovedPlayerIds((current) => [...current, userId]);
+      collapsePlayerTimersRef.current[userId] = window.setTimeout(() => {
+        store.removeSessionPlayer(session.id, userId);
+        setPendingRemovedPlayerIds((current) => current.filter((id) => id !== userId));
+        setCollapsingRemovedPlayerIds((current) => current.filter((id) => id !== userId));
+        delete collapsePlayerTimersRef.current[userId];
+      }, 240);
+    }, 5000);
+  }
+
+  function undoRemovePlayer(userId: string) {
+    const timerId = removePlayerTimersRef.current[userId];
+    if (timerId) window.clearTimeout(timerId);
+    const collapseTimerId = collapsePlayerTimersRef.current[userId];
+    if (collapseTimerId) window.clearTimeout(collapseTimerId);
+    delete removePlayerTimersRef.current[userId];
+    delete collapsePlayerTimersRef.current[userId];
+    setPendingRemovedPlayerIds((current) => current.filter((id) => id !== userId));
+    setCollapsingRemovedPlayerIds((current) => current.filter((id) => id !== userId));
   }
 
   return (
@@ -788,8 +835,27 @@ function ActiveSessionDashboard({
             </button>
           </form>
         ) : null}
-        {bills.map((bill) => (
-          <div className={bill.isPresent ? "leaderboard-player" : "leaderboard-player not-present"} key={bill.user.id}>
+        {bills.map((bill) => {
+          const isPendingRemoval = pendingRemovedPlayerIds.includes(bill.user.id);
+          const isCollapsingRemoval = collapsingRemovedPlayerIds.includes(bill.user.id);
+          return (
+          <div
+            className={[
+              "leaderboard-player",
+              bill.isPresent ? "" : "not-present",
+              isPendingRemoval ? "pending-removal" : "",
+              isCollapsingRemoval ? "collapsing-removal" : "",
+            ].filter(Boolean).join(" ")}
+            key={bill.user.id}
+          >
+            {isPendingRemoval ? (
+              <div className="participant-remove-notice">
+                <span>{bill.user.name} has removed.</span>
+                <button type="button" onClick={() => undoRemovePlayer(bill.user.id)}>
+                  Undo
+                </button>
+              </div>
+            ) : (
             <div
               className="leader-row"
               role="button"
@@ -838,7 +904,9 @@ function ActiveSessionDashboard({
                     type="button"
                     className="delete-player-button"
                     aria-label={`Delete ${bill.user.name} from session`}
-                    onClick={() => store.removeSessionPlayer(session.id, bill.user.id)}
+                    disabled={bill.isHost}
+                    title={bill.isHost ? "Host cannot be removed" : undefined}
+                    onClick={() => scheduleRemovePlayer(bill.user.id)}
                   >
                     <Trash2 size={17} />
                   </button>
@@ -846,11 +914,13 @@ function ActiveSessionDashboard({
               ) : null}
               {expandedPlayerId === bill.user.id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
             </div>
-            {expandedPlayerId === bill.user.id ? (
+            )}
+            {!isPendingRemoval && expandedPlayerId === bill.user.id ? (
               <PlayerMatchHistory matches={sessionMatches} state={store.state} playerId={bill.user.id} />
             ) : null}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="metric-grid report-stats-grid">
@@ -882,7 +952,7 @@ function ActiveSessionDashboard({
           }}
           onSubmit={submitTotalMatches}
         />
-        <Metric label="Shuttle / match" value={formatVnd(shuttleFee)} />
+        <Metric label="Price/Match" value={formatVnd(calculateFee(session))} />
         <MatchDurationMetric
           isHost={isHost}
           value={session.matchDuration}
