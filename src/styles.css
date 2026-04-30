@@ -438,6 +438,23 @@ label {
 
 .billing-method-dropdown .custom-select-trigger {
   background: #fffdf6;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.billing-method-dropdown .custom-select-trigger:hover {
+  border-color: rgba(255, 90, 45, 0.45);
+  background: #fff8eb;
+  box-shadow: 0 10px 24px rgba(44, 34, 18, 0.08);
+  transform: translateY(-1px);
+}
+
+.billing-method-dropdown .custom-select-trigger:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(255, 90, 45, 0.15);
 }
 
 .billing-method-chip {
@@ -1107,6 +1124,23 @@ label {
 
 .leaderboard-player.not-present {
   opacity: 0.62;
+}
+
+.leaderboard-player.current-player {
+  margin-inline: -10px;
+  padding-inline: 10px;
+  border-radius: 16px;
+  background: rgba(230, 255, 215, 0.72);
+}
+
+.leaderboard-player.current-player .leader-row {
+  border-top-color: rgba(28, 173, 99, 0.18);
+}
+
+.you-badge {
+  color: #23723f !important;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
 }
 
 .leaderboard-player.pending-removal {

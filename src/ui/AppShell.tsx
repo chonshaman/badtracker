@@ -16,7 +16,9 @@ export function AppShell() {
   const reportSessionId = adminDetailMatch?.params.reportSessionId;
   const sessionId = sessionMatch?.params.sessionId;
   const shouldCreateSession = new URLSearchParams(location.search).get("create") === "1";
-  const detailBackTo = (location.state as { backTo?: string } | null)?.backTo;
+  const routeState = location.state as { backTo?: string; playerId?: string } | null;
+  const detailBackTo = routeState?.backTo;
+  const detailPlayerId = routeState?.playerId;
   const store = useStore();
   const activeSession = sessionId
     ? store.state.sessions.find((session) => session.id === sessionId && session.status === "Active")
@@ -47,6 +49,7 @@ export function AppShell() {
                 initialSessionId={reportSessionId}
                 initialCreate={shouldCreateSession}
                 detailBackTo={detailBackTo}
+                detailPlayerId={detailPlayerId}
               />
             ) : (
               <PlayerView slug={slug} sessionId={sessionId} store={store} activeSession={activeSession} />

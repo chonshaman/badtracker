@@ -24,6 +24,7 @@ type AdminViewProps = {
   initialSessionId?: string;
   initialCreate?: boolean;
   detailBackTo?: string;
+  detailPlayerId?: string;
 };
 
 type SetupDraft = {
@@ -47,7 +48,7 @@ function runViewTransition(update: () => void) {
   if (!transition) update();
 }
 
-export function AdminView({ slug, store, initialSessionId, initialCreate = false, detailBackTo }: AdminViewProps) {
+export function AdminView({ slug, store, initialSessionId, initialCreate = false, detailBackTo, detailPlayerId }: AdminViewProps) {
   const navigate = useNavigate();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(initialSessionId ?? null);
   const [isCreating, setIsCreating] = useState(initialCreate);
@@ -144,6 +145,7 @@ export function AdminView({ slug, store, initialSessionId, initialCreate = false
               role={selectedRole ?? "player"}
               store={store}
               onDeleted={scheduleSessionDelete}
+              currentPlayerId={detailPlayerId}
             />
           </div>
         ) : selectedSessionId && !store.isSyncing ? (
@@ -593,11 +595,13 @@ function ActiveSessionDashboard({
   role,
   store,
   onDeleted,
+  currentPlayerId,
 }: {
   session: Session;
   role: "host" | "player";
   store: Store;
   onDeleted: (snapshot: DeletedSessionSnapshot) => void;
+  currentPlayerId?: string;
 }) {
   const isHost = role === "host";
   const shareLink = `${window.location.origin}/${session.slug}/session/${session.id}`;
@@ -824,7 +828,10 @@ function ActiveSessionDashboard({
           <h3>Participants</h3>
           <div className="participant-stats">
             <span>{activeCount} present</span>
-            <span>{formatVnd(courtShare)} court share</span>
+            <span>
+              {session.billingMethod === "casual" ? "Fixed Price/match" : "Court share"}{" "}
+              {formatVnd(session.billingMethod === "casual" ? fixedPricePerMatch : courtShare)}
+            </span>
           </div>
         </div>
         {duplicateRosterNames.length > 0 ? (
@@ -853,11 +860,13 @@ function ActiveSessionDashboard({
         {bills.map((bill) => {
           const isPendingRemoval = pendingRemovedPlayerIds.includes(bill.user.id);
           const isCollapsingRemoval = collapsingRemovedPlayerIds.includes(bill.user.id);
+          const isCurrentPlayer = Boolean(currentPlayerId && bill.userIds.includes(currentPlayerId));
           return (
           <div
             className={[
               "leaderboard-player",
               bill.isPresent ? "" : "not-present",
+              isCurrentPlayer ? "current-player" : "",
               isPendingRemoval ? "pending-removal" : "",
               isCollapsingRemoval ? "collapsing-removal" : "",
             ].filter(Boolean).join(" ")}
@@ -888,6 +897,7 @@ function ActiveSessionDashboard({
               <div className="leader-player-copy">
                 <div className="leader-name-line">
                   <strong>{bill.user.name}</strong>
+                  {isCurrentPlayer ? <span className="you-badge">(You)</span> : null}
                   {bill.isHost ? <span className="host-badge">Host</span> : null}
                 </div>
                 <span>

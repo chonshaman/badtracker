@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { formatVnd } from "../lib/money";
-import { playerBills, shuttleFeePerMatch } from "../lib/sessionMath";
+import { casualUnitPrice, playerBills, shuttleFeePerMatch } from "../lib/sessionMath";
 import type { Match, Session, User } from "../types";
 
 type Store = ReturnType<typeof import("../lib/store").useTrackerStore>;
@@ -213,6 +213,9 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
     matches: store.state.matches,
   }).find((bill) => bill.userIds.includes(currentUser.id));
   const courtFee = myBill?.courtShare ?? 0;
+  const playerFeeMetric = activeSession.billingMethod === "casual"
+    ? casualUnitPrice(activeSession, store.state.matches)
+    : courtFee;
   const totalDue = myBill?.totalDue ?? 0;
   const currentUserIds = store.state.users
     .filter((user) => user.name.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
@@ -241,9 +244,11 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
     <div className="player-screen">
       <PlayerDebtHeader
         session={latestJoinedSession}
+        playerId={currentUser.id}
         playerName={currentUser.name}
         totalDue={totalDue}
         courtFee={courtFee}
+        playerFeeMetric={playerFeeMetric}
         shuttleCostPerMatch={latestShuttleCostPerMatch}
         matchesPlayed={myMatches.length}
         backTo={playerReturnPath}
@@ -291,6 +296,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
         sessions={previousSessions}
         store={store}
         backTo={playerReturnPath}
+        playerId={currentUser.id}
       />
 
       {selectedOpponentId && (
@@ -364,6 +370,9 @@ function ClosedSessionSummary({
         matches: store.state.matches,
       }).find((candidate) => candidate.userIds.includes(currentUser.id))
     : undefined;
+  const playerFeeMetric = session.billingMethod === "casual"
+    ? casualUnitPrice(session, store.state.matches)
+    : bill?.courtShare ?? 0;
 
   return (
     <section className="player-empty closed-session-summary">
@@ -373,8 +382,7 @@ function ClosedSessionSummary({
         <div className="closed-session-meta">
           <span>Hi, {currentUser.name}</span>
           <span>{bill?.matchesPlayed ?? 0} {(bill?.matchesPlayed ?? 0) === 1 ? "match" : "matches"} played</span>
-          <span>Method: {billingMethodShortLabel(session.billingMethod ?? "standard")}</span>
-          <span>Shuttle Cost / Match: {formatVnd(shuttleFeePerMatch(session))}</span>
+          <span>{playerFeeLabel(session)}: {formatVnd(playerFeeMetric)}</span>
         </div>
       ) : roster.length > 0 ? (
         <UserDropdown
@@ -386,7 +394,7 @@ function ClosedSessionSummary({
       ) : (
         <p>This session has ended. The final report is still available.</p>
       )}
-      <Link className="primary-button" to={`/${session.slug}/admin/${session.id}`} state={{ backTo: `/${session.slug}` }}>
+      <Link className="primary-button" to={`/${session.slug}/admin/${session.id}`} state={{ backTo: `/${session.slug}`, playerId }}>
         View report
       </Link>
     </section>
@@ -395,17 +403,21 @@ function ClosedSessionSummary({
 
 function PlayerDebtHeader({
   session,
+  playerId,
   playerName,
   totalDue,
   courtFee,
+  playerFeeMetric,
   shuttleCostPerMatch,
   matchesPlayed,
   backTo,
 }: {
   session: Session;
+  playerId: string;
   playerName: string;
   totalDue: number;
   courtFee: number;
+  playerFeeMetric: number;
   shuttleCostPerMatch: number;
   matchesPlayed: number;
   backTo: string;
@@ -429,11 +441,10 @@ function PlayerDebtHeader({
       </div>
       <h1>{formatVnd(totalDue)}</h1>
       <div className="debt-breakdown" aria-label="Debt breakdown">
-        <span>{session.billingMethod === "casual" ? "Pooled Share" : "Court Fee"}: {formatVnd(courtFee)}</span>
-        <span>Method: {billingMethodShortLabel(session.billingMethod ?? "standard")}</span>
+        <span>{playerFeeLabel(session)}: {formatVnd(playerFeeMetric)}</span>
         <span>Shuttle Cost / Match: {formatVnd(shuttleCostPerMatch)}</span>
       </div>
-      <Link className="session-detail-link" to={`/${session.slug}/admin/${session.id}`} state={{ backTo }}>
+      <Link className="session-detail-link" to={`/${session.slug}/admin/${session.id}`} state={{ backTo, playerId }}>
         <span>
           <strong>{sessionTitle(session)}</strong>
           <small>{session.date}</small>
@@ -449,11 +460,13 @@ function PreviousSessions({
   sessions,
   store,
   backTo,
+  playerId,
 }: {
   currentUserIds: string[];
   sessions: Session[];
   store: Store;
   backTo: string;
+  playerId: string;
 }) {
   if (sessions.length === 0) return null;
 
@@ -469,7 +482,7 @@ function PreviousSessions({
         }).find((candidate) => candidate.userIds.some((userId) => currentUserIds.includes(userId)));
 
         return (
-          <Link className="previous-session-card" key={session.id} to={`/${session.slug}/admin/${session.id}`} state={{ backTo }}>
+          <Link className="previous-session-card" key={session.id} to={`/${session.slug}/admin/${session.id}`} state={{ backTo, playerId }}>
             <div>
               <strong>{sessionTitle(session)}</strong>
               <span>{session.date}</span>
@@ -818,8 +831,8 @@ function sessionTitle(session: Session): string {
   return session.name?.trim() || session.date;
 }
 
-function billingMethodShortLabel(method: Session["billingMethod"]): string {
-  return method === "casual" ? "Pay-per-play" : "Standard";
+function playerFeeLabel(session: Session): string {
+  return session.billingMethod === "casual" ? "Fixed Price/match" : "Court share/person";
 }
 
 function normalizeScore(score: string): string | undefined {
