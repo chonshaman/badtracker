@@ -15,6 +15,7 @@ import {
   remoteRemoveSessionPlayers,
   remoteSetPaid,
   remoteSetPresent,
+  remoteUpdateBillingMethod,
   remoteUpdateCourtPrice,
   remoteUpdateMatchDuration,
   remoteUpdateTotalCourtTime,
@@ -22,7 +23,7 @@ import {
   seedDefaultUsers as remoteSeedDefaultUsers,
   subscribeRemoteChanges,
 } from "./remoteStore";
-import type { Match, RosterEntry, Session, SessionParticipant, SessionStatus, TrackerState, User } from "../types";
+import type { BillingMethod, Match, RosterEntry, Session, SessionParticipant, SessionStatus, TrackerState, User } from "../types";
 
 const storageKey = "smash-tracker-state-v1";
 const channelName = "smash-tracker-sync";
@@ -345,6 +346,15 @@ export function useTrackerStore() {
       }));
       void runRemote(() => remoteUpdateTotalCourtTime(sessionId, totalCourtTime));
     },
+    updateBillingMethod: (sessionId: string, billingMethod: BillingMethod) => {
+      commit((current) => ({
+        ...current,
+        sessions: current.sessions.map((session) =>
+          session.id === sessionId ? { ...session, billingMethod } : session,
+        ),
+      }));
+      void runRemote(() => remoteUpdateBillingMethod(sessionId, billingMethod));
+    },
     togglePaid: (sessionId: string, userId: string) => {
       let nextPaid = false;
       let matchingUserIds: string[] = [];
@@ -457,6 +467,10 @@ export function useTrackerStore() {
 function normalizeState(state: TrackerState): TrackerState {
   return {
     ...state,
+    sessions: state.sessions.map((session) => ({
+      ...session,
+      billingMethod: session.billingMethod ?? "standard",
+    })),
     roster: state.roster.map((entry) => ({
       ...entry,
       isPresent: entry.isPresent ?? true,

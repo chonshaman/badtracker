@@ -26,6 +26,28 @@ export function shuttleFeePerMatch(session: Session): number {
   return session.shuttlePrice / session.shuttlesPerTube;
 }
 
+function matchParticipantCount() {
+  return 2;
+}
+
+function sessionMatches(
+  session: Session,
+  matches: { playerAId: string; playerBId: string; sessionId: string; isStake?: boolean; winnerId?: string }[],
+) {
+  return matches.filter((match) => match.sessionId === session.id);
+}
+
+export function casualUnitPrice(
+  session: Session,
+  matches: { playerAId: string; playerBId: string; sessionId: string; isStake?: boolean; winnerId?: string }[],
+): number {
+  const loggedMatches = sessionMatches(session, matches);
+  const totalIndividualPlays = loggedMatches.reduce((total) => total + matchParticipantCount(), 0);
+  if (totalIndividualPlays <= 0) return 0;
+  const totalExpenses = session.courtPrice + loggedMatches.length * shuttleFeePerMatch(session);
+  return totalExpenses / totalIndividualPlays;
+}
+
 function playerShuttleShareForMatch(
   session: Session,
   match: { playerAId: string; playerBId: string; isStake?: boolean; winnerId?: string },
@@ -57,6 +79,9 @@ export function playerBills(args: {
   matches: { playerAId: string; playerBId: string; sessionId: string; isStake?: boolean; winnerId?: string }[];
 }): PlayerBill[] {
   const groupedEntries = new Map<string, { user: User; entries: RosterEntry[]; userIds: string[] }>();
+  const loggedMatches = sessionMatches(args.session, args.matches);
+  const isCasualBilling = (args.session.billingMethod ?? "standard") === "casual";
+  const casualSharePerPlay = casualUnitPrice(args.session, args.matches);
 
   args.roster
     .filter((entry) => entry.sessionId === args.session.id)
@@ -76,22 +101,24 @@ export function playerBills(args: {
   return Array.from(groupedEntries.values())
     .map(({ user, entries, userIds }) => {
       const uniqueUserIds = Array.from(new Set(userIds));
-      const matchesPlayed = args.matches.filter(
+      const matchesPlayed = loggedMatches.filter(
         (match) =>
-          match.sessionId === args.session.id &&
           (uniqueUserIds.includes(match.playerAId) || uniqueUserIds.includes(match.playerBId)),
       ).length;
       const isPresent = entries.some((entry) => entry.isPresent);
-      const courtShare = isPresent ? courtSharePerPlayer(args.session, args.roster) : 0;
-      const shuttleFee = args.matches.reduce((total, match) => {
-        if (
-          match.sessionId !== args.session.id ||
-          (!uniqueUserIds.includes(match.playerAId) && !uniqueUserIds.includes(match.playerBId))
-        ) {
-          return total;
-        }
-        return total + playerShuttleShareForMatch(args.session, match, uniqueUserIds);
-      }, 0);
+      const courtShare = isCasualBilling
+        ? matchesPlayed * casualSharePerPlay
+        : isPresent
+          ? courtSharePerPlayer(args.session, args.roster)
+          : 0;
+      const shuttleFee = isCasualBilling
+        ? 0
+        : loggedMatches.reduce((total, match) => {
+            if (!uniqueUserIds.includes(match.playerAId) && !uniqueUserIds.includes(match.playerBId)) {
+              return total;
+            }
+            return total + playerShuttleShareForMatch(args.session, match, uniqueUserIds);
+          }, 0);
       return {
         user,
         userIds: uniqueUserIds,

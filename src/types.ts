@@ -1,4 +1,5 @@
 export type SessionStatus = "Active" | "Closed";
+export type BillingMethod = "standard" | "casual";
 export type UserRole = "Admin" | "Player";
 export type UserType = "Regular" | "Temp";
 
@@ -31,6 +32,7 @@ export type Session = {
   matchDuration: number;
   totalCourtTime: number;
   feePerPerson: number;
+  billingMethod: BillingMethod;
   status: SessionStatus;
   createdAt: string;
   endedAt?: string;

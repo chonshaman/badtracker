@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import type { Match, RosterEntry, Session, SessionParticipant, TrackerState, User } from "../types";
+import type { BillingMethod, Match, RosterEntry, Session, SessionParticipant, TrackerState, User } from "../types";
 
 const supabaseUrl: string | undefined =
   import.meta.env.VITE_SUPABASE_URL ??
@@ -37,6 +37,7 @@ type RemoteSession = {
   match_duration: number;
   total_court_time: number;
   fee_per_person: number;
+  billing_method?: BillingMethod | null;
   status: Session["status"];
   created_at: string;
   ended_at?: string | null;
@@ -237,7 +238,7 @@ export async function remoteCreateSession(session: Session, roster: RosterEntry[
       body: JSON.stringify(toRemoteSession(session)),
     });
   } catch (error) {
-    if (!isMissingSessionNameColumn(error)) throw error;
+    if (!isMissingSessionOptionalColumn(error)) throw error;
     await request("sessions", {
       method: "POST",
       body: JSON.stringify(toRemoteSession(session, false)),
@@ -308,6 +309,13 @@ export async function remoteUpdateTotalCourtTime(sessionId: string, totalCourtTi
   });
 }
 
+export async function remoteUpdateBillingMethod(sessionId: string, billingMethod: BillingMethod) {
+  await request(`sessions?id=eq.${encodeURIComponent(sessionId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ billing_method: billingMethod }),
+  });
+}
+
 export async function remoteSetPaid(sessionId: string, userIds: string[], paid: boolean) {
   await Promise.all(
     userIds.map((userId) =>
@@ -372,6 +380,7 @@ function fromRemoteSession(session: RemoteSession): Session {
     matchDuration: session.match_duration,
     totalCourtTime: session.total_court_time,
     feePerPerson: session.fee_per_person,
+    billingMethod: session.billing_method ?? "standard",
     status: session.status,
     createdAt: session.created_at,
     endedAt: session.ended_at ?? undefined,
@@ -391,6 +400,7 @@ function toRemoteSession(session: Session, includeName = true): RemoteSession {
     match_duration: session.matchDuration,
     total_court_time: session.totalCourtTime,
     fee_per_person: session.feePerPerson,
+    billing_method: includeName ? session.billingMethod : undefined,
     status: session.status,
     created_at: session.createdAt,
     ended_at: session.endedAt,
@@ -398,6 +408,7 @@ function toRemoteSession(session: Session, includeName = true): RemoteSession {
   if (!includeName) {
     delete remoteSession.name;
     delete remoteSession.pin_code;
+    delete remoteSession.billing_method;
   }
   return remoteSession;
 }
@@ -460,8 +471,8 @@ function toRemoteMatch(match: Match): RemoteMatch {
   };
 }
 
-function isMissingSessionNameColumn(error: unknown): boolean {
-  return isMissingColumn(error, "name") || isMissingColumn(error, "pin_code");
+function isMissingSessionOptionalColumn(error: unknown): boolean {
+  return isMissingColumn(error, "name") || isMissingColumn(error, "pin_code") || isMissingColumn(error, "billing_method");
 }
 
 function isMissingColumn(error: unknown, column: string): boolean {

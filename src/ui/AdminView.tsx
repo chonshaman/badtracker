@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Download, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Download, Info, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { presets } from "../data/defaults";
@@ -8,12 +8,13 @@ import type { DeletedSessionSnapshot } from "../lib/store";
 import {
   activeRosterCount,
   calculateFee,
+  casualUnitPrice,
   courtSharePerPlayer,
   maxMatches,
   playerBills,
   shuttleFeePerMatch,
 } from "../lib/sessionMath";
-import type { Match, RosterEntry, Session, TrackerState, User } from "../types";
+import type { BillingMethod, Match, RosterEntry, Session, TrackerState, User } from "../types";
 
 type Store = ReturnType<typeof import("../lib/store").useTrackerStore>;
 
@@ -32,6 +33,7 @@ type SetupDraft = {
   matchDuration: number;
   totalCourtTime: number;
   feePerPerson: number;
+  billingMethod: BillingMethod;
 };
 
 const initialPreset = presets[0];
@@ -316,7 +318,7 @@ function SessionSetup({
   const guestAddLock = useRef(false);
   const [draft, setDraft] = useState<SetupDraft>(() => {
     const feePerPerson = calculateFee(initialPreset);
-    return { ...initialPreset, feePerPerson };
+    return { ...initialPreset, feePerPerson, billingMethod: "standard" };
   });
 
   const computedFee = calculateFee(draft);
@@ -328,7 +330,7 @@ function SessionSetup({
   function applyPreset(presetId: string) {
     const preset = presets.find((item) => item.id === presetId) ?? initialPreset;
     setSelectedPreset(preset.id);
-    setDraft({ ...preset, feePerPerson: calculateFee(preset) });
+    setDraft((current) => ({ ...preset, feePerPerson: calculateFee(preset), billingMethod: current.billingMethod }));
   }
 
   function updateNumber(field: keyof SetupDraft, value: string) {
@@ -399,6 +401,7 @@ function SessionSetup({
       matchDuration: draft.matchDuration,
       totalCourtTime: draft.totalCourtTime,
       feePerPerson: draft.feePerPerson || computedFee,
+      billingMethod: draft.billingMethod,
       status: "Active",
       createdAt: new Date().toISOString(),
     };
@@ -450,6 +453,17 @@ function SessionSetup({
           <NumberField label="Match duration" suffix="min" value={draft.matchDuration} onChange={(value) => updateNumber("matchDuration", value)} />
           <NumberField label="Total court time" suffix="min" value={draft.totalCourtTime} onChange={(value) => updateNumber("totalCourtTime", value)} />
           <MoneyField label="Fee per person override" value={draft.feePerPerson} onChange={(value) => updateNumber("feePerPerson", value)} />
+          <label className="full-span">
+            Billing method
+            <BillingMethodDropdown
+              value={draft.billingMethod}
+              onChange={(billingMethod) => setDraft((current) => ({ ...current, billingMethod }))}
+            />
+          </label>
+          <div className="billing-method-note full-span">
+            <Info size={16} />
+            <span>Standard splits court by present players and shuttle by each match. Casual pools all costs by matches played.</span>
+          </div>
           <div className="formula-card">
             <strong>{formatVnd(computedFee)}</strong>
             <span>Calculated fee per person per match</span>
@@ -613,6 +627,7 @@ function ActiveSessionDashboard({
   });
   const activeCount = activeRosterCount(store.state.roster, session.id);
   const courtShare = courtSharePerPlayer(session, store.state.roster);
+  const fixedPricePerMatch = casualUnitPrice(session, store.state.matches);
   const shuttleFee = shuttleFeePerMatch(session);
   const sessionMatches = store.state.matches
     .filter((match) => match.sessionId === session.id)
@@ -923,11 +938,18 @@ function ActiveSessionDashboard({
         })}
       </div>
 
+      <BillingSettings
+        isHost={isHost}
+        method={session.billingMethod ?? "standard"}
+        onChange={(billingMethod) => store.updateBillingMethod(session.id, billingMethod)}
+      />
+
       <div className="metric-grid report-stats-grid">
         <CourtPriceMetric
           isHost={isHost}
           value={session.courtPrice}
-          courtShare={courtShare}
+          captionLabel={session.billingMethod === "casual" ? "Fixed price/match" : "Court share/person"}
+          captionValue={session.billingMethod === "casual" ? fixedPricePerMatch : courtShare}
           draft={courtPriceDraft}
           isEditing={isCourtPriceEditing}
           onDraftChange={setCourtPriceDraft}
@@ -1039,6 +1061,98 @@ function ActiveSessionDashboard({
         />
       ) : null}
     </section>
+  );
+}
+
+function BillingSettings({
+  isHost,
+  method,
+  onChange,
+}: {
+  isHost: boolean;
+  method: BillingMethod;
+  onChange: (method: BillingMethod) => void;
+}) {
+  return (
+    <div className="table-card billing-settings-card">
+      <div>
+        <p className="eyebrow">Billing settings</p>
+        <h3>{billingMethodTitle(method)}</h3>
+        <span>{billingMethodDescription(method)}</span>
+      </div>
+      {isHost ? (
+        <BillingMethodDropdown value={method} onChange={onChange} compact />
+      ) : (
+        <span className="billing-method-chip">Method: {billingMethodShortLabel(method)}</span>
+      )}
+    </div>
+  );
+}
+
+function BillingMethodDropdown({
+  value,
+  onChange,
+  compact = false,
+}: {
+  value: BillingMethod;
+  onChange: (method: BillingMethod) => void;
+  compact?: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const options: { value: BillingMethod; label: string }[] = [
+    { value: "standard", label: "Standard (Fixed Court + Per Match)" },
+    { value: "casual", label: "Casual (Pooled/Proportional)" },
+  ];
+  const selectedLabel = options.find((option) => option.value === value)?.label ?? options[0].label;
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!dropdownRef.current?.contains(event.target as Node)) setIsOpen(false);
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, [isOpen]);
+
+  return (
+    <div className={compact ? "custom-select billing-method-dropdown compact" : "custom-select billing-method-dropdown"} ref={dropdownRef}>
+      <button
+        type="button"
+        className="custom-select-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((current) => !current)}
+      >
+        <span>{selectedLabel}</span>
+        <ChevronDown size={18} />
+      </button>
+      {isOpen ? (
+        <div className="custom-select-menu" role="listbox" aria-label="Billing method">
+          {options.map((option) => {
+            const isSelected = option.value === value;
+            return (
+              <button
+                type="button"
+                className={isSelected ? "custom-select-option selected" : "custom-select-option"}
+                key={option.value}
+                role="option"
+                aria-selected={isSelected}
+                onClick={() => {
+                  onChange(option.value);
+                  setIsOpen(false);
+                }}
+              >
+                <span>{option.label}</span>
+                {isSelected ? <Check size={17} /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -1300,7 +1414,8 @@ function NumberField({
 function CourtPriceMetric({
   isHost,
   value,
-  courtShare,
+  captionLabel,
+  captionValue,
   draft,
   isEditing,
   onDraftChange,
@@ -1310,7 +1425,8 @@ function CourtPriceMetric({
 }: {
   isHost: boolean;
   value: number;
-  courtShare: number;
+  captionLabel: string;
+  captionValue: number;
   draft: string;
   isEditing: boolean;
   onDraftChange: (value: string) => void;
@@ -1323,7 +1439,7 @@ function CourtPriceMetric({
       <div className="metric-card court-price-card">
         <span>Total court money</span>
         <strong>{formatVnd(value)}</strong>
-        <small className="metric-caption">Court share/person: {formatVnd(courtShare)}</small>
+        <small className="metric-caption">{captionLabel}: {formatVnd(captionValue)}</small>
       </div>
     );
   }
@@ -1356,7 +1472,7 @@ function CourtPriceMetric({
         <button type="button" className="court-price-display" onClick={onEdit}>
           <span>
             <strong>{formatVnd(value)}</strong>
-            <small className="metric-caption">Court share/person: {formatVnd(courtShare)}</small>
+            <small className="metric-caption">{captionLabel}: {formatVnd(captionValue)}</small>
           </span>
           <small>Edit</small>
         </button>
@@ -1476,7 +1592,7 @@ function EditableMinuteMetric({
   onCancel: () => void;
   onSubmit: () => void;
 }) {
-  if (!isHost) return <Metric label={label} value={`${formatStatNumber(value)} min`} />;
+  if (!isHost) return <Metric label={label} value={formatMinutesWithHours(value)} />;
 
   return (
     <div className="metric-card court-price-card">
@@ -1503,7 +1619,7 @@ function EditableMinuteMetric({
         </form>
       ) : (
         <button type="button" className="court-price-display" onClick={onEdit}>
-          <strong>{formatStatNumber(value)} min</strong>
+          <strong>{formatMinutesWithHours(value)}</strong>
           <small>Edit</small>
         </button>
       )}
@@ -1531,6 +1647,14 @@ function formatStatNumber(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, "");
 }
 
+function formatMinutesWithHours(minutes: number): string {
+  const formattedMinutes = `${formatStatNumber(minutes)} min`;
+  if (!Number.isFinite(minutes) || minutes <= 0) return formattedMinutes;
+  const hours = minutes / 60;
+  const hourLabel = hours === 1 ? "hour" : "hours";
+  return `${formattedMinutes} - ${formatStatNumber(hours)} ${hourLabel}`;
+}
+
 function parseCourtMoneyInput(value: string): number {
   const normalized = value.replace(/\s+/g, "");
   if (!normalized) return 0;
@@ -1549,6 +1673,20 @@ function parseCourtMoneyInput(value: string): number {
 
 function sessionTitle(session: Session): string {
   return session.name?.trim() || session.date;
+}
+
+function billingMethodTitle(method: BillingMethod): string {
+  return method === "casual" ? "Casual billing" : "Standard billing";
+}
+
+function billingMethodShortLabel(method: BillingMethod): string {
+  return method === "casual" ? "Pay-per-play" : "Standard";
+}
+
+function billingMethodDescription(method: BillingMethod): string {
+  return method === "casual"
+    ? "All court and shuttle costs are pooled, then split by each player match."
+    : "Court is split by present players. Shuttle is split only by players in each match.";
 }
 
 function participantSessionRoles(state: TrackerState): Map<string, "host" | "player"> {

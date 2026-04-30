@@ -373,6 +373,7 @@ function ClosedSessionSummary({
         <div className="closed-session-meta">
           <span>Hi, {currentUser.name}</span>
           <span>{bill?.matchesPlayed ?? 0} {(bill?.matchesPlayed ?? 0) === 1 ? "match" : "matches"} played</span>
+          <span>Method: {billingMethodShortLabel(session.billingMethod ?? "standard")}</span>
           <span>Shuttle Cost / Match: {formatVnd(shuttleFeePerMatch(session))}</span>
         </div>
       ) : roster.length > 0 ? (
@@ -428,7 +429,8 @@ function PlayerDebtHeader({
       </div>
       <h1>{formatVnd(totalDue)}</h1>
       <div className="debt-breakdown" aria-label="Debt breakdown">
-        <span>Court Fee: {formatVnd(courtFee)}</span>
+        <span>{session.billingMethod === "casual" ? "Pooled Share" : "Court Fee"}: {formatVnd(courtFee)}</span>
+        <span>Method: {billingMethodShortLabel(session.billingMethod ?? "standard")}</span>
         <span>Shuttle Cost / Match: {formatVnd(shuttleCostPerMatch)}</span>
       </div>
       <Link className="session-detail-link" to={`/${session.slug}/admin/${session.id}`} state={{ backTo }}>
@@ -814,6 +816,10 @@ function formatTime(value: string): string {
 
 function sessionTitle(session: Session): string {
   return session.name?.trim() || session.date;
+}
+
+function billingMethodShortLabel(method: Session["billingMethod"]): string {
+  return method === "casual" ? "Pay-per-play" : "Standard";
 }
 
 function normalizeScore(score: string): string | undefined {

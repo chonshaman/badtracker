@@ -18,6 +18,7 @@ create table if not exists sessions (
   match_duration integer not null,
   total_court_time integer not null,
   fee_per_person integer not null,
+  billing_method varchar(20) not null default 'standard' check (billing_method in ('standard', 'casual')),
   status text not null check (status in ('Active', 'Closed')),
   created_at timestamptz not null,
   ended_at timestamptz
@@ -26,6 +27,7 @@ create table if not exists sessions (
 alter table sessions add column if not exists host_user_id uuid default auth.uid() references auth.users(id) on delete set null;
 alter table sessions add column if not exists name text;
 alter table sessions add column if not exists pin_code text;
+alter table sessions add column if not exists billing_method varchar(20) not null default 'standard' check (billing_method in ('standard', 'casual'));
 
 create table if not exists session_roster (
   session_id text not null references sessions(id) on delete cascade,

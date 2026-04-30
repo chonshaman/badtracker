@@ -395,6 +395,60 @@ label {
   font-weight: 800;
 }
 
+.billing-method-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid rgba(23, 52, 44, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 253, 246, 0.74);
+  color: var(--muted);
+  padding: 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.billing-method-note svg {
+  flex: 0 0 auto;
+  color: var(--accent-dark);
+}
+
+.billing-settings-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+}
+
+.billing-settings-card h3 {
+  margin: 0 0 4px;
+}
+
+.billing-settings-card span {
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.billing-settings-card .billing-method-dropdown {
+  width: min(340px, 100%);
+  flex: 0 0 min(340px, 100%);
+}
+
+.billing-method-dropdown .custom-select-trigger {
+  background: #fffdf6;
+}
+
+.billing-method-chip {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #e6ffd7;
+  color: #23723f !important;
+  padding: 8px 12px;
+  font-weight: 900 !important;
+}
+
 .court-price-display small {
   color: var(--accent-dark);
   font-size: 0.78rem;
@@ -2175,6 +2229,16 @@ label {
   .session-setup-modal .full-span,
   .session-setup-modal .formula-card {
     grid-column: 1 / -1;
+  }
+
+  .billing-settings-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .billing-settings-card .billing-method-dropdown {
+    width: 100%;
+    flex-basis: auto;
   }
 
   .section-header {
