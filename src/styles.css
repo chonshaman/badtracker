@@ -1557,6 +1557,25 @@ label {
   box-shadow: 0 10px 24px rgba(44, 34, 18, 0.06);
 }
 
+.closed-session-summary .primary-button {
+  width: max-content;
+}
+
+.closed-session-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.closed-session-meta span {
+  border-radius: 999px;
+  background: #e6ffd7;
+  color: #23723f;
+  padding: 7px 10px;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
 .previous-sessions {
   display: grid;
   gap: 8px;

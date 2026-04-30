@@ -26,6 +26,21 @@ export function shuttleFeePerMatch(session: Session): number {
   return session.shuttlePrice / session.shuttlesPerTube;
 }
 
+function playerShuttleShareForMatch(
+  session: Session,
+  match: { playerAId: string; playerBId: string; isStake?: boolean; winnerId?: string },
+  userIds: string[],
+): number {
+  const isPlayerInMatch = userIds.includes(match.playerAId) || userIds.includes(match.playerBId);
+  if (!isPlayerInMatch) return 0;
+
+  const matchShuttleCost = shuttleFeePerMatch(session);
+  const participantCount = 2;
+  if (!match.isStake) return matchShuttleCost / participantCount;
+
+  return match.winnerId && userIds.includes(match.winnerId) ? 0 : matchShuttleCost;
+}
+
 export function activeRosterCount(roster: RosterEntry[], sessionId: string): number {
   return roster.filter((entry) => entry.sessionId === sessionId && entry.isPresent).length;
 }
@@ -75,11 +90,7 @@ export function playerBills(args: {
         ) {
           return total;
         }
-        const fee = shuttleFeePerMatch(args.session);
-        if (!match.isStake) return total + fee;
-        return match.winnerId && uniqueUserIds.includes(match.winnerId)
-          ? total
-          : total + fee * 2;
+        return total + playerShuttleShareForMatch(args.session, match, uniqueUserIds);
       }, 0);
       return {
         user,

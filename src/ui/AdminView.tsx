@@ -274,7 +274,7 @@ function SessionList({
               <div>
                 <strong>{sessionTitle(session)}</strong>
                 <span>
-                  {session.date} - {formatVnd(calculateFee(session))} / match
+                  {session.date} - {formatVnd(shuttleFeePerMatch(session))} / match
                 </span>
               </div>
               <span className="session-row-action">
@@ -952,7 +952,7 @@ function ActiveSessionDashboard({
           }}
           onSubmit={submitTotalMatches}
         />
-        <Metric label="Price/Match" value={formatVnd(calculateFee(session))} />
+        <Metric label="Shuttle Cost / Match" value={formatVnd(shuttleFee)} />
         <MatchDurationMetric
           isHost={isHost}
           value={session.matchDuration}

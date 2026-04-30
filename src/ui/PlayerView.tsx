@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { formatVnd } from "../lib/money";
-import { calculateFee, playerBills } from "../lib/sessionMath";
+import { playerBills, shuttleFeePerMatch } from "../lib/sessionMath";
 import type { Match, Session, User } from "../types";
 
 type Store = ReturnType<typeof import("../lib/store").useTrackerStore>;
@@ -16,7 +16,9 @@ type PlayerViewProps = {
 };
 
 export function PlayerView({ slug, sessionId, store, activeSession }: PlayerViewProps) {
-  const playerStorageKey = activeSession ? `smash-player-${activeSession.id}` : `smash-player-${slug}`;
+  const linkedSession = sessionId ? store.state.sessions.find((session) => session.id === sessionId) : undefined;
+  const sessionForPlayer = activeSession ?? linkedSession;
+  const playerStorageKey = sessionForPlayer ? `smash-player-${sessionForPlayer.id}` : `smash-player-${slug}`;
   const [playerId, setPlayerId] = useState(() => sessionStorage.getItem(playerStorageKey) ?? "");
   const [selectedOpponentId, setSelectedOpponentId] = useState<string | null>(null);
   const [guestName, setGuestName] = useState("");
@@ -59,12 +61,13 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
     );
   }
 
-  if (sessionId && store.isRemoteEnabled && sessionLinkStatus === "closed" && !activeSession) {
+  if (!activeSession && linkedSession?.status === "Closed") {
     return (
-      <SessionMissingState
-        title="Session is closed."
-        message="This session is already closed, so players can no longer enter from this link."
-        slug={slug}
+      <ClosedSessionSummary
+        session={linkedSession}
+        playerId={playerId}
+        onPlayerChange={setPlayerId}
+        store={store}
       />
     );
   }
@@ -101,16 +104,6 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
             <h1>Looking up court.</h1>
             <p>Confirming this shared link with Supabase.</p>
           </section>
-        );
-      }
-
-      if (sessionLinkStatus === "closed") {
-        return (
-          <SessionMissingState
-            title="Session is closed."
-            message="This session is already closed, so players can no longer enter from this link."
-            slug={slug}
-          />
         );
       }
 
@@ -232,7 +225,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
     )
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const latestJoinedSession = joinedSessions[0] ?? activeSession;
-  const latestPricePerMatch = calculateFee(latestJoinedSession);
+  const latestShuttleCostPerMatch = shuttleFeePerMatch(latestJoinedSession);
   const playerReturnPath = `/${activeSession.slug}/session/${activeSession.id}`;
   const previousSessions = store.state.sessions
     .filter(
@@ -251,7 +244,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
         playerName={currentUser.name}
         totalDue={totalDue}
         courtFee={courtFee}
-        pricePerMatch={latestPricePerMatch}
+        shuttleCostPerMatch={latestShuttleCostPerMatch}
         matchesPlayed={myMatches.length}
         backTo={playerReturnPath}
       />
@@ -340,8 +333,60 @@ function SessionMissingState({
       <p className="eyebrow">Session unavailable</p>
       <h1>{title}</h1>
       <p>{message}</p>
-      <Link className="secondary-button" to={`/${slug}`}>
-        Back to player home
+      <Link className="primary-button empty-session-action" to={`/${slug}/admin?create=1`}>
+        <Plus size={18} /> New session
+      </Link>
+    </section>
+  );
+}
+
+function ClosedSessionSummary({
+  session,
+  playerId,
+  onPlayerChange,
+  store,
+}: {
+  session: Session;
+  playerId: string;
+  onPlayerChange: (playerId: string) => void;
+  store: Store;
+}) {
+  const rosterIds = store.state.roster
+    .filter((entry) => entry.sessionId === session.id)
+    .map((entry) => entry.userId);
+  const roster = uniqueUsersByName(store.state.users.filter((user) => rosterIds.includes(user.id)));
+  const currentUser = roster.find((user) => user.id === playerId);
+  const bill = currentUser
+    ? playerBills({
+        session,
+        users: store.state.users,
+        roster: store.state.roster,
+        matches: store.state.matches,
+      }).find((candidate) => candidate.userIds.includes(currentUser.id))
+    : undefined;
+
+  return (
+    <section className="player-empty closed-session-summary">
+      <p className="eyebrow">Session closed</p>
+      <h1>{currentUser ? formatVnd(bill?.totalDue ?? 0) : "Final report ready."}</h1>
+      {currentUser ? (
+        <div className="closed-session-meta">
+          <span>Hi, {currentUser.name}</span>
+          <span>{bill?.matchesPlayed ?? 0} {(bill?.matchesPlayed ?? 0) === 1 ? "match" : "matches"} played</span>
+          <span>Shuttle Cost / Match: {formatVnd(shuttleFeePerMatch(session))}</span>
+        </div>
+      ) : roster.length > 0 ? (
+        <UserDropdown
+          users={roster}
+          value={playerId}
+          placeholder="Select your name"
+          onChange={onPlayerChange}
+        />
+      ) : (
+        <p>This session has ended. The final report is still available.</p>
+      )}
+      <Link className="primary-button" to={`/${session.slug}/admin/${session.id}`} state={{ backTo: `/${session.slug}` }}>
+        View report
       </Link>
     </section>
   );
@@ -352,7 +397,7 @@ function PlayerDebtHeader({
   playerName,
   totalDue,
   courtFee,
-  pricePerMatch,
+  shuttleCostPerMatch,
   matchesPlayed,
   backTo,
 }: {
@@ -360,7 +405,7 @@ function PlayerDebtHeader({
   playerName: string;
   totalDue: number;
   courtFee: number;
-  pricePerMatch: number;
+  shuttleCostPerMatch: number;
   matchesPlayed: number;
   backTo: string;
 }) {
@@ -384,7 +429,7 @@ function PlayerDebtHeader({
       <h1>{formatVnd(totalDue)}</h1>
       <div className="debt-breakdown" aria-label="Debt breakdown">
         <span>Court Fee: {formatVnd(courtFee)}</span>
-        <span>Price/Match: {formatVnd(pricePerMatch)}</span>
+        <span>Shuttle Cost / Match: {formatVnd(shuttleCostPerMatch)}</span>
       </div>
       <Link className="session-detail-link" to={`/${session.slug}/admin/${session.id}`} state={{ backTo }}>
         <span>
