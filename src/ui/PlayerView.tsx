@@ -52,7 +52,8 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
   if (!activeSession) {
     if (store.isRemoteEnabled && store.isSyncing) {
       return (
-        <section className="player-empty">
+        <section className="player-empty syncing-state">
+          <span className="sync-loader" aria-hidden="true" />
           <p className="eyebrow">Loading session</p>
           <h1>Syncing court.</h1>
           <p>Fetching the shared session from Supabase.</p>
@@ -74,7 +75,8 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
     if (sessionId && store.isRemoteEnabled) {
       if (sessionLinkStatus === "checking") {
         return (
-          <section className="player-empty">
+          <section className="player-empty syncing-state">
+            <span className="sync-loader" aria-hidden="true" />
             <p className="eyebrow">Checking session</p>
             <h1>Looking up court.</h1>
             <p>Confirming this shared link with Supabase.</p>

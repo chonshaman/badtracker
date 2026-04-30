@@ -1310,6 +1310,11 @@ label {
   flex-direction: column;
   justify-content: center;
   gap: 14px;
+  animation: empty-state-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transition:
+    opacity 220ms ease,
+    transform 220ms ease,
+    box-shadow 220ms ease;
 }
 
 .login-card h1,
@@ -1317,6 +1322,27 @@ label {
   margin-bottom: 0;
   font-size: clamp(3rem, 18vw, 6rem);
   line-height: 0.86;
+}
+
+.syncing-state {
+  position: relative;
+}
+
+.sync-loader {
+  width: 46px;
+  height: 46px;
+  display: block;
+  border: 3px solid rgba(23, 52, 44, 0.14);
+  border-top-color: #1cad63;
+  border-right-color: #ff5a2d;
+  border-radius: 38% 62% 45% 55%;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 248, 235, 0.95) 0 38%, transparent 40%),
+    linear-gradient(135deg, rgba(164, 243, 195, 0.7), rgba(255, 90, 45, 0.18));
+  box-shadow:
+    0 0 0 8px rgba(28, 173, 99, 0.08),
+    0 14px 30px rgba(44, 34, 18, 0.12);
+  animation: sync-loader-morph 1100ms cubic-bezier(0.65, 0, 0.35, 1) infinite;
 }
 
 .guest-join {
@@ -1938,6 +1964,36 @@ label {
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+@keyframes empty-state-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sync-loader-morph {
+  0% {
+    border-radius: 38% 62% 45% 55%;
+    transform: rotate(0deg) scale(1);
+  }
+  40% {
+    border-radius: 58% 42% 62% 38%;
+    transform: rotate(150deg) scale(1.08);
+  }
+  70% {
+    border-radius: 50%;
+    transform: rotate(245deg) scale(0.96);
+  }
+  100% {
+    border-radius: 38% 62% 45% 55%;
+    transform: rotate(360deg) scale(1);
   }
 }
 
