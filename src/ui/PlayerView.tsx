@@ -110,6 +110,9 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
         <p className="eyebrow">Court closed</p>
         <h1>No active session.</h1>
         <p>Ask the host to start a session before recording matches.</p>
+        <Link className="primary-button" to={`/${slug}/admin`}>
+          Create new session
+        </Link>
       </section>
     );
   }
