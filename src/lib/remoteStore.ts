@@ -1,20 +1,20 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Match, RosterEntry, Session, SessionParticipant, TrackerState, User } from "../types";
 
-const fallbackSupabaseUrl = "https://lhkonyltsafjkguctkmc.supabase.co";
-const fallbackSupabaseAnonKey = "sb_publishable_2DZhFU_EqNqIMnmWiNvm2g__D8e7-9R";
-const supabaseUrl =
+const supabaseUrl: string | undefined =
   import.meta.env.VITE_SUPABASE_URL ??
-  import.meta.env.NEXT_PUBLIC_SUPABASE_URL ??
-  fallbackSupabaseUrl;
-const supabaseAnonKey =
+  import.meta.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey: string | undefined =
   import.meta.env.VITE_SUPABASE_ANON_KEY ??
-  import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-  fallbackSupabaseAnonKey;
+  import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+if (import.meta.env.DEV && (!supabaseUrl || !supabaseAnonKey)) {
+  console.warn("[badtracker] Supabase env vars not set. App will run in local-only mode.");
+}
 
 export const isRemoteEnabled = Boolean(supabaseUrl && supabaseAnonKey);
 
-const supabase = isRemoteEnabled
+const supabase = supabaseUrl && supabaseAnonKey
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         persistSession: true,

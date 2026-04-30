@@ -20,6 +20,7 @@ type AdminViewProps = {
   slug: string;
   store: Store;
   initialSessionId?: string;
+  initialCreate?: boolean;
 };
 
 type SetupDraft = {
@@ -42,9 +43,9 @@ function runViewTransition(update: () => void) {
   if (!transition) update();
 }
 
-export function AdminView({ slug, store, initialSessionId }: AdminViewProps) {
+export function AdminView({ slug, store, initialSessionId, initialCreate = false }: AdminViewProps) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(initialSessionId ?? null);
-  const [isCreating, setIsCreating] = useState(false);
+  const [isCreating, setIsCreating] = useState(initialCreate);
   const [transitionDirection, setTransitionDirection] = useState<"to-detail" | "to-list">("to-detail");
   const [deleteToast, setDeleteToast] = useState<DeletedSessionSnapshot | null>(null);
   const [deleteCountdown, setDeleteCountdown] = useState(7);
@@ -61,6 +62,10 @@ export function AdminView({ slug, store, initialSessionId }: AdminViewProps) {
   useEffect(() => {
     setSelectedSessionId(initialSessionId ?? null);
   }, [initialSessionId]);
+
+  useEffect(() => {
+    if (initialCreate) setIsCreating(true);
+  }, [initialCreate]);
 
   useEffect(
     () => () => {

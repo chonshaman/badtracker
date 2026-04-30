@@ -14,6 +14,7 @@ export function AppShell() {
   const mode = adminMatch || adminDetailMatch ? "admin" : "player";
   const reportSessionId = adminDetailMatch?.params.reportSessionId;
   const sessionId = sessionMatch?.params.sessionId;
+  const shouldCreateSession = new URLSearchParams(location.search).get("create") === "1";
   const store = useTrackerStore();
   const activeSession = sessionId
     ? store.state.sessions.find((session) => session.id === sessionId && session.status === "Active")
@@ -37,7 +38,12 @@ export function AppShell() {
 
         <div className={`route-view route-view-${mode}`}>
           {mode === "admin" ? (
-            <AdminView slug={slug} store={store} initialSessionId={reportSessionId} />
+            <AdminView
+              slug={slug}
+              store={store}
+              initialSessionId={reportSessionId}
+              initialCreate={shouldCreateSession}
+            />
           ) : (
             <PlayerView slug={slug} sessionId={sessionId} store={store} activeSession={activeSession} />
           )}
