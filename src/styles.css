@@ -90,6 +90,7 @@ h2,
 h3 {
   font-family: "Fraunces", serif;
   letter-spacing: -0.04em;
+  line-height: 48px;
 }
 
 .app-shell {
@@ -286,12 +287,19 @@ h3 {
 
 .step-badge {
   width: max-content;
-  margin-top: 10px;
   border-radius: 999px;
   background: #17342c;
   color: #fff8eb;
-  padding: 10px 14px;
+  padding: 3px 7px;
+  font-size: 0.64rem;
   font-weight: 800;
+  line-height: 1.2;
+}
+
+.setup-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .form-grid,
@@ -676,6 +684,7 @@ label {
 
 .inline-action {
   align-items: stretch;
+  gap:12px;
 }
 
 .leader-name-line {
@@ -835,6 +844,7 @@ label {
 
 .button-row {
   margin-top: 18px;
+  gap:12px;
 }
 
 .header-actions {
@@ -1925,6 +1935,31 @@ label {
   padding-right: 54px;
 }
 
+.session-setup-modal .button-row {
+  position: sticky;
+  right: 0;
+  bottom: -28px;
+  left: 0;
+  z-index: 8;
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 7fr);
+  gap: 14px;
+  margin: 18px -28px -28px;
+  border-top: 1px solid rgba(222, 208, 182, 0.82);
+  background: rgba(255, 248, 235, 0.94);
+  padding: 14px 28px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.session-setup-modal .button-row .secondary-button {
+  order: 1;
+}
+
+.session-setup-modal .button-row .primary-button {
+  order: 2;
+}
+
 .session-setup-modal::-webkit-scrollbar,
 .modal-backdrop::-webkit-scrollbar,
 .custom-select-menu::-webkit-scrollbar {
@@ -2298,11 +2333,18 @@ label {
     grid-template-columns: 1fr;
   }
 
-  .session-setup-modal .button-row .primary-button {
-    order: 1;
+  .session-setup-modal .button-row {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 7fr);
+    gap: 14px;
+    margin-right: -28px;
+    margin-left: -28px;
   }
 
   .session-setup-modal .button-row .secondary-button {
+    order: 1;
+  }
+
+  .session-setup-modal .button-row .primary-button {
     order: 2;
   }
 

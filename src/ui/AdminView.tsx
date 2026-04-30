@@ -432,9 +432,10 @@ function SessionSetup({
         </button>
       <div className="section-header">
         <div>
-          <p className="eyebrow">Session setup</p>
+          <p className="eyebrow setup-eyebrow">
+            Session setup <span className="step-badge">Step {step}/3</span>
+          </p>
           <h2>Create new session</h2>
-          <div className="step-badge">Step {step}/3</div>
         </div>
       </div>
 
