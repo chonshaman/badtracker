@@ -39,6 +39,7 @@ type SetupDraft = {
 
 const initialPreset = presets[0];
 const setupPlayersStorageKey = "smash-tracker-setup-players-v1";
+const setupRosterPrefsStorageKey = "smash-tracker-setup-roster-prefs-v1";
 const setupMockUsers: User[] = [
   { id: "u-nhat", name: "Nhat", role: "Player", type: "Regular" },
   { id: "u-hung", name: "Hung", role: "Player", type: "Regular" },
@@ -322,6 +323,7 @@ function SessionSetup({
   const [guestName, setGuestName] = useState("");
   const [setupError, setSetupError] = useState("");
   const guestAddLock = useRef(false);
+  const skipRosterPrefsWrite = useRef(true);
   const [draft, setDraft] = useState<SetupDraft>(() => {
     const feePerPerson = calculateFee(initialPreset);
     return { ...initialPreset, feePerPerson, billingMethod: "standard" };
@@ -332,6 +334,22 @@ function SessionSetup({
   const setupPlayers = setupUsers.filter(
     (user) => !hiddenUserIds.includes(user.id) && !isHostPlaceholderUser(user),
   );
+
+  useEffect(() => {
+    const prefs = readSetupRosterPrefs(setupUsers);
+    if (!prefs) return;
+    setSelectedUsers(prefs.selectedUsers);
+    setHostUserIds(prefs.hostUserIds);
+    setHiddenUserIds(prefs.hiddenUserIds);
+  }, []);
+
+  useEffect(() => {
+    if (skipRosterPrefsWrite.current) {
+      skipRosterPrefsWrite.current = false;
+      return;
+    }
+    writeSetupRosterPrefs({ selectedUsers, hostUserIds, hiddenUserIds });
+  }, [selectedUsers, hostUserIds, hiddenUserIds]);
 
   function applyPreset(presetId: string) {
     const preset = presets.find((item) => item.id === presetId) ?? initialPreset;
@@ -397,6 +415,7 @@ function SessionSetup({
       return;
     }
     const uniqueSelectedUsers = uniqueUserIdsByName(selectedUsers, setupUsers);
+    const resolvedSetupUsers = resolveSetupUsersForSession(setupUsers, store.state.users);
     const trimmedSessionName = sessionName.trim();
     const session: Session = {
       id: sessionId,
@@ -416,12 +435,12 @@ function SessionSetup({
     };
     const roster: RosterEntry[] = uniqueSelectedUsers.map((userId) => ({
       sessionId,
-      userId,
+      userId: resolvedSetupUsers.get(userId)?.id ?? userId,
       paid: false,
       isPresent: true,
       isHost: hostUserIds.includes(userId),
     }));
-    store.createSession(session, roster, setupUsers);
+    store.createSession(session, roster, uniqueUsersByName([...store.state.users, ...Array.from(resolvedSetupUsers.values())]));
     onSessionCreated(sessionId);
   }
 
@@ -1783,6 +1802,38 @@ function writeLocalSetupPlayers(users: User[]) {
   localStorage.setItem(setupPlayersStorageKey, JSON.stringify(users));
 }
 
+type SetupRosterPrefs = {
+  selectedUsers: string[];
+  hostUserIds: string[];
+  hiddenUserIds: string[];
+};
+
+function readSetupRosterPrefs(users: User[]): SetupRosterPrefs | null {
+  try {
+    const raw = localStorage.getItem(setupRosterPrefsStorageKey);
+    if (!raw) return null;
+    const prefs = JSON.parse(raw) as SetupRosterPrefs;
+    const validUserIds = new Set(users.map((user) => user.id));
+    return {
+      selectedUsers: Array.isArray(prefs.selectedUsers)
+        ? prefs.selectedUsers.filter((id) => validUserIds.has(id))
+        : [],
+      hostUserIds: Array.isArray(prefs.hostUserIds)
+        ? prefs.hostUserIds.filter((id) => validUserIds.has(id)).slice(0, 1)
+        : [],
+      hiddenUserIds: Array.isArray(prefs.hiddenUserIds)
+        ? prefs.hiddenUserIds.filter((id) => validUserIds.has(id))
+        : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeSetupRosterPrefs(prefs: SetupRosterPrefs) {
+  localStorage.setItem(setupRosterPrefsStorageKey, JSON.stringify(prefs));
+}
+
 function duplicateSelectedUserName(userIds: string[], users: User[]): string | undefined {
   const seenNames = new Set<string>();
   for (const userId of userIds) {
@@ -1793,6 +1844,16 @@ function duplicateSelectedUserName(userIds: string[], users: User[]): string | u
     seenNames.add(key);
   }
   return undefined;
+}
+
+function resolveSetupUsersForSession(setupUsers: User[], existingUsers: User[]): Map<string, User> {
+  const existingByName = new Map(existingUsers.map((user) => [user.name.trim().toLowerCase(), user]));
+  return new Map(
+    setupUsers.map((user) => [
+      user.id,
+      existingByName.get(user.name.trim().toLowerCase()) ?? user,
+    ]),
+  );
 }
 
 function duplicateSessionRosterNames(sessionId: string, state: TrackerState): string[] {

@@ -210,22 +210,31 @@ export async function remoteAddUser(user: User) {
   const existingUser = await findRemoteUserByName(user.name);
   if (existingUser) return existingUser;
 
-  await request("users", {
-    method: "POST",
-    headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
-    body: JSON.stringify(user),
-  });
+  try {
+    await request("users", {
+      method: "POST",
+      headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+      body: JSON.stringify(user),
+    });
+  } catch (error) {
+    if (!isDuplicateNameError(error)) throw error;
+    return (await findRemoteUserByName(user.name)) ?? user;
+  }
   return user;
 }
 
 export async function remoteCreateSession(session: Session, roster: RosterEntry[], users: User[]) {
   const rosterUsers = users.filter((user) => roster.some((entry) => entry.userId === user.id));
+  let remoteRoster = roster;
   if (rosterUsers.length > 0) {
-    await request("users", {
-      method: "POST",
-      headers: { Prefer: "resolution=ignore-duplicates" },
-      body: JSON.stringify(rosterUsers),
-    });
+    const remoteUsers = await Promise.all(rosterUsers.map((user) => remoteAddUser(user)));
+    const remoteUserIdsByLocalId = new Map(
+      rosterUsers.map((user, index) => [user.id, remoteUsers[index]?.id ?? user.id]),
+    );
+    remoteRoster = roster.map((entry) => ({
+      ...entry,
+      userId: remoteUserIdsByLocalId.get(entry.userId) ?? entry.userId,
+    }));
   }
 
   await request(`sessions?slug=eq.${encodeURIComponent(session.slug)}&status=eq.Active`, {
@@ -245,8 +254,8 @@ export async function remoteCreateSession(session: Session, roster: RosterEntry[
     });
   }
   await remoteClaimSessionAccess(session.id, "host");
-  if (roster.length > 0) {
-    await insertRemoteRoster(roster);
+  if (remoteRoster.length > 0) {
+    await insertRemoteRoster(remoteRoster);
   }
 }
 
@@ -479,6 +488,12 @@ function isMissingColumn(error: unknown, column: string): boolean {
   if (!(error instanceof Error)) return false;
   const message = error.message.toLowerCase();
   return message.includes("column") && message.includes(column.toLowerCase());
+}
+
+function isDuplicateNameError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return message.includes("23505") && message.includes("users_name_key");
 }
 
 async function findRemoteUserByName(name: string): Promise<User | undefined> {
