@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { formatVnd } from "../lib/money";
-import { playerBills } from "../lib/sessionMath";
+import { calculateFee, playerBills } from "../lib/sessionMath";
 import type { Match, Session, User } from "../types";
 
 type Store = ReturnType<typeof import("../lib/store").useTrackerStore>;
@@ -210,7 +210,6 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
     matches: store.state.matches,
   }).find((bill) => bill.userIds.includes(currentUser.id));
   const courtFee = myBill?.courtShare ?? 0;
-  const shuttleFee = myBill?.shuttleFee ?? 0;
   const totalDue = myBill?.totalDue ?? 0;
   const currentUserIds = store.state.users
     .filter((user) => user.name.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
@@ -223,6 +222,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
     )
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const latestJoinedSession = joinedSessions[0] ?? activeSession;
+  const latestPricePerMatch = calculateFee(latestJoinedSession);
   const previousSessions = store.state.sessions
     .filter(
       (session) =>
@@ -240,7 +240,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
         playerName={currentUser.name}
         totalDue={totalDue}
         courtFee={courtFee}
-        shuttleFee={shuttleFee}
+        pricePerMatch={latestPricePerMatch}
         matchesPlayed={myMatches.length}
       />
 
@@ -338,14 +338,14 @@ function PlayerDebtHeader({
   playerName,
   totalDue,
   courtFee,
-  shuttleFee,
+  pricePerMatch,
   matchesPlayed,
 }: {
   session: Session;
   playerName: string;
   totalDue: number;
   courtFee: number;
-  shuttleFee: number;
+  pricePerMatch: number;
   matchesPlayed: number;
 }) {
   const previousTotalDue = useRef(totalDue);
@@ -361,13 +361,15 @@ function PlayerDebtHeader({
 
   return (
     <header className={`sticky-player-header debt-header ${flash ? `debt-flash-${flash}` : ""}`}>
-      <p>Hi, {playerName}</p>
+      <div className="player-card-greeting">
+        <p>Hi, {playerName}</p>
+        <span>{matchesPlayed} {matchesPlayed === 1 ? "match" : "matches"} played</span>
+      </div>
       <h1>{formatVnd(totalDue)}</h1>
       <div className="debt-breakdown" aria-label="Debt breakdown">
         <span>Court Fee: {formatVnd(courtFee)}</span>
-        <span>Shuttle Fee: {formatVnd(shuttleFee)}</span>
+        <span>Price/Match: {formatVnd(pricePerMatch)}</span>
       </div>
-      <span>Matches: {matchesPlayed}</span>
       <Link className="session-detail-link" to={`/${session.slug}/admin/${session.id}`}>
         <span>
           <strong>{sessionTitle(session)}</strong>

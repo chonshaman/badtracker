@@ -260,7 +260,7 @@ h3 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 0;
 }
 
 .section-header h2,
@@ -893,7 +893,6 @@ label {
   grid-template-columns: 1fr auto;
   align-items: center;
   gap: 14px;
-  margin-top: 16px;
   padding: 16px;
 }
 
@@ -1044,8 +1043,8 @@ label {
 
 .participant-stats span,
 .debt-breakdown span {
-  border-radius: 999px;
-  background: #e6ffd7;
+  border-radius: 99px;
+  background: #e6ffd71a;
   color: #23723f;
   padding: 7px 10px;
   font-size: 0.78rem;
@@ -1380,8 +1379,27 @@ label {
   font-weight: 800;
 }
 
+.player-card-greeting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.player-card-greeting p {
+  margin-bottom: 0;
+}
+
+.player-card-greeting span {
+  flex: 0 0 auto;
+  font-size: 0.86rem;
+  text-align: right;
+  font-weight: 500;
+}
+
 .sticky-player-header .debt-breakdown span {
-  color: #23723f;
+  color: #ffec85;
+  font-weight: 600;
 }
 
 .session-detail-link {
@@ -2151,10 +2169,6 @@ label {
 
   .player-history-card p {
     display: grid;
-    grid-template-columns: 1fr;
-  }
-
-  .opponent-grid {
     grid-template-columns: 1fr;
   }
 
