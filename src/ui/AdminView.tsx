@@ -38,6 +38,14 @@ type SetupDraft = {
 };
 
 const initialPreset = presets[0];
+const setupPlayersStorageKey = "smash-tracker-setup-players-v1";
+const setupMockUsers: User[] = [
+  { id: "u-nhat", name: "Nhat", role: "Player", type: "Regular" },
+  { id: "u-hung", name: "Hung", role: "Player", type: "Regular" },
+  { id: "u-tuan", name: "Tuan", role: "Player", type: "Regular" },
+  { id: "u-minh", name: "Minh", role: "Player", type: "Regular" },
+  { id: "u-linh", name: "Linh", role: "Player", type: "Regular" },
+];
 
 type ViewTransitionDocument = Document & {
   startViewTransition?: (callback: () => void) => { finished: Promise<void> };
@@ -307,14 +315,10 @@ function SessionSetup({
   const [step, setStep] = useState(1);
   const [sessionName, setSessionName] = useState(() => `Session ${new Date().toISOString().slice(0, 10)}`);
   const [selectedPreset, setSelectedPreset] = useState(initialPreset.id);
-  const [selectedUsers, setSelectedUsers] = useState<string[]>(
-    uniqueUsersByName(
-      store.state.users.filter((user) => user.type === "Regular" && !isHostPlaceholderUser(user)),
-    ).map((u) => u.id),
-  );
+  const [selectedUsers, setSelectedUsers] = useState<string[]>(setupMockUsers.map((user) => user.id));
   const [hostUserIds, setHostUserIds] = useState<string[]>([]);
   const [hiddenUserIds, setHiddenUserIds] = useState<string[]>([]);
-  const [setupAddedUsers, setSetupAddedUsers] = useState<User[]>([]);
+  const [setupAddedUsers, setSetupAddedUsers] = useState<User[]>(() => readLocalSetupPlayers());
   const [guestName, setGuestName] = useState("");
   const [setupError, setSetupError] = useState("");
   const guestAddLock = useRef(false);
@@ -324,7 +328,7 @@ function SessionSetup({
   });
 
   const computedFee = calculateFee(draft);
-  const setupUsers = uniqueUsersByName([...store.state.users, ...setupAddedUsers]);
+  const setupUsers = uniqueUsersByName([...setupMockUsers, ...setupAddedUsers]);
   const setupPlayers = setupUsers.filter(
     (user) => !hiddenUserIds.includes(user.id) && !isHostPlaceholderUser(user),
   );
@@ -371,8 +375,11 @@ function SessionSetup({
       role: "Player",
       type: "Temp",
     };
-    setSetupAddedUsers((current) => [...current, user]);
-    store.addUser(user);
+    setSetupAddedUsers((current) => {
+      const next = uniqueUsersByName([...current, user]);
+      writeLocalSetupPlayers(next);
+      return next;
+    });
     setSelectedUsers((current) => Array.from(new Set([...current, user.id])));
     setHiddenUserIds((current) => current.filter((id) => id !== user.id));
     setGuestName("");
@@ -421,6 +428,11 @@ function SessionSetup({
   function removeSetupPlayer(userId: string) {
     setSelectedUsers((current) => current.filter((id) => id !== userId));
     setHostUserIds((current) => current.filter((id) => id !== userId));
+    setSetupAddedUsers((current) => {
+      const next = current.filter((user) => user.id !== userId);
+      if (next.length !== current.length) writeLocalSetupPlayers(next);
+      return next;
+    });
     setHiddenUserIds((current) => (current.includes(userId) ? current : [...current, userId]));
   }
 
@@ -1753,6 +1765,22 @@ function uniqueUserIdsByName(userIds: string[], users: User[]): string[] {
 
 function isHostPlaceholderUser(user: User): boolean {
   return user.name.trim().toLowerCase() === "host";
+}
+
+function readLocalSetupPlayers(): User[] {
+  try {
+    const raw = localStorage.getItem(setupPlayersStorageKey);
+    if (!raw) return [];
+    const users = JSON.parse(raw) as User[];
+    if (!Array.isArray(users)) return [];
+    return users.filter((user) => user?.id && user?.name?.trim());
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalSetupPlayers(users: User[]) {
+  localStorage.setItem(setupPlayersStorageKey, JSON.stringify(users));
 }
 
 function duplicateSelectedUserName(userIds: string[], users: User[]): string | undefined {
