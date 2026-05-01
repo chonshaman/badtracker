@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { playerBills } from "../.test-dist/lib/sessionMath.js";
+import { casualUnitPrice, playerBills } from "../.test-dist/lib/sessionMath.js";
 
 const session = {
   id: "session-1",
@@ -161,5 +161,94 @@ describe("playerBills stake billing", () => {
 
     assert.equal(winnerBill?.totalDue, 0);
     assert.equal(loserBill?.totalDue, 140000);
+  });
+});
+
+describe("casual billing present participant scaling", () => {
+  it("excludes no-show players from casual proportional bills and recalculates unit price", () => {
+    const casualSession = { ...session, billingMethod: "casual" };
+    const users = [
+      { id: "u-present-a", name: "Present A", role: "Player", type: "Regular" },
+      { id: "u-present-b", name: "Present B", role: "Player", type: "Regular" },
+      { id: "u-no-show", name: "No Show", role: "Player", type: "Regular" },
+    ];
+    const roster = [
+      { sessionId: casualSession.id, userId: "u-present-a", paid: false, isPresent: true, isHost: false },
+      { sessionId: casualSession.id, userId: "u-present-b", paid: false, isPresent: true, isHost: false },
+      { sessionId: casualSession.id, userId: "u-no-show", paid: false, isPresent: false, isHost: false },
+    ];
+    const matches = [
+      {
+        id: "match-present",
+        sessionId: casualSession.id,
+        createdAt: "2026-05-01T10:05:00.000Z",
+        playerAId: "u-present-a",
+        playerBId: "u-present-b",
+        isStake: false,
+        status: "Valid",
+      },
+      {
+        id: "match-no-show",
+        sessionId: casualSession.id,
+        createdAt: "2026-05-01T10:25:00.000Z",
+        playerAId: "u-present-a",
+        playerBId: "u-no-show",
+        isStake: false,
+        status: "Valid",
+      },
+    ];
+
+    const unitPrice = casualUnitPrice(casualSession, matches, roster);
+    const bills = playerBills({ session: casualSession, users, roster, matches });
+    const presentA = bills.find((bill) => bill.user.id === "u-present-a");
+    const presentB = bills.find((bill) => bill.user.id === "u-present-b");
+    const noShow = bills.find((bill) => bill.user.id === "u-no-show");
+
+    assert.equal(unitPrice, 160000 / 3);
+    assert.equal(presentA?.totalDue, (160000 / 3) * 2);
+    assert.equal(presentB?.totalDue, 160000 / 3);
+    assert.equal(noShow?.totalDue, 0);
+  });
+
+  it("recalculates casual billing when a player is removed from the roster", () => {
+    const casualSession = { ...session, billingMethod: "casual" };
+    const users = [
+      { id: "u-present-a", name: "Present A", role: "Player", type: "Regular" },
+      { id: "u-present-b", name: "Present B", role: "Player", type: "Regular" },
+      { id: "u-removed", name: "Removed", role: "Player", type: "Regular" },
+    ];
+    const roster = [
+      { sessionId: casualSession.id, userId: "u-present-a", paid: false, isPresent: true, isHost: false },
+      { sessionId: casualSession.id, userId: "u-present-b", paid: false, isPresent: true, isHost: false },
+    ];
+    const matches = [
+      {
+        id: "match-present",
+        sessionId: casualSession.id,
+        createdAt: "2026-05-01T10:05:00.000Z",
+        playerAId: "u-present-a",
+        playerBId: "u-present-b",
+        isStake: false,
+        status: "Valid",
+      },
+      {
+        id: "match-removed",
+        sessionId: casualSession.id,
+        createdAt: "2026-05-01T10:25:00.000Z",
+        playerAId: "u-present-a",
+        playerBId: "u-removed",
+        isStake: false,
+        status: "Valid",
+      },
+    ];
+
+    const unitPrice = casualUnitPrice(casualSession, matches, roster);
+    const bills = playerBills({ session: casualSession, users, roster, matches });
+    const presentA = bills.find((bill) => bill.user.id === "u-present-a");
+    const removed = bills.find((bill) => bill.user.id === "u-removed");
+
+    assert.equal(unitPrice, 160000 / 3);
+    assert.equal(presentA?.totalDue, (160000 / 3) * 2);
+    assert.equal(removed, undefined);
   });
 });

@@ -230,7 +230,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
   }).find((bill) => bill.userIds.includes(currentUser.id));
   const courtFee = selectedHomeBill?.courtShare ?? 0;
   const playerFeeMetric = selectedHomeSession.billingMethod === "casual"
-    ? casualUnitPrice(selectedHomeSession, store.state.matches)
+    ? casualUnitPrice(selectedHomeSession, store.state.matches, store.state.roster)
     : courtFee;
   const totalDue = selectedHomeBill?.totalDue ?? 0;
   const selectedShuttleCostPerMatch = shuttleFeePerMatch(selectedHomeSession);
@@ -394,7 +394,7 @@ function ClosedSessionSummary({
       }).find((candidate) => candidate.userIds.includes(currentUser.id))
     : undefined;
   const playerFeeMetric = session.billingMethod === "casual"
-    ? casualUnitPrice(session, store.state.matches)
+    ? casualUnitPrice(session, store.state.matches, store.state.roster)
     : bill?.courtShare ?? 0;
 
   return (

@@ -23,9 +23,14 @@ function sessionMatches(
 export function casualUnitPrice(
   session: Session,
   matches: { playerAId: string; playerBId: string; sessionId: string; score?: string; isStake?: boolean; winnerId?: string }[],
+  roster?: RosterEntry[],
 ): number {
   const loggedMatches = sessionMatches(session, matches);
-  const totalIndividualPlays = loggedMatches.reduce((total) => total + matchParticipantCount(), 0);
+  const activeUserIds = activeRosterUserIds(roster, session.id);
+  const totalIndividualPlays = loggedMatches.reduce(
+    (total, match) => total + matchActiveParticipantCount(match, activeUserIds),
+    0,
+  );
   if (totalIndividualPlays <= 0) return 0;
   const totalExpenses = session.courtPrice + loggedMatches.length * shuttleFeePerMatch(session);
   return totalExpenses / totalIndividualPlays;
@@ -52,14 +57,18 @@ function playerCasualShareForMatch(
   unitPrice: number,
   match: { playerAId: string; playerBId: string; score?: string; isStake?: boolean; winnerId?: string },
   userIds: string[],
+  activeUserIds: Set<string> | null,
 ): number {
   const isPlayerInMatch = userIds.includes(match.playerAId) || userIds.includes(match.playerBId);
   if (!isPlayerInMatch) return 0;
+  if (activeUserIds && !userIds.some((userId) => activeUserIds.has(userId))) return 0;
   if (!match.isStake) return unitPrice;
 
   const winnerId = match.winnerId ?? inferWinnerIdFromScore(match);
   if (!winnerId) return unitPrice;
-  return userIds.includes(winnerId) ? 0 : unitPrice * matchParticipantCount();
+  const activeParticipantCount = matchActiveParticipantCount(match, activeUserIds);
+  if (activeParticipantCount < matchParticipantCount()) return unitPrice;
+  return userIds.includes(winnerId) ? 0 : unitPrice * activeParticipantCount;
 }
 
 export function activeRosterCount(roster: RosterEntry[], sessionId: string): number {
@@ -80,7 +89,8 @@ export function playerBills(args: {
   const groupedEntries = new Map<string, { user: User; entries: RosterEntry[]; userIds: string[] }>();
   const loggedMatches = sessionMatches(args.session, args.matches);
   const isCasualBilling = (args.session.billingMethod ?? "standard") === "casual";
-  const casualSharePerPlay = casualUnitPrice(args.session, args.matches);
+  const activeUserIds = activeRosterUserIds(args.roster, args.session.id);
+  const casualSharePerPlay = casualUnitPrice(args.session, args.matches, args.roster);
 
   args.roster
     .filter((entry) => entry.sessionId === args.session.id)
@@ -105,7 +115,10 @@ export function playerBills(args: {
       ).length;
       const isPresent = entries.some((entry) => entry.isPresent);
       const courtShare = isCasualBilling
-        ? loggedMatches.reduce((total, match) => total + playerCasualShareForMatch(casualSharePerPlay, match, uniqueUserIds), 0)
+        ? loggedMatches.reduce(
+            (total, match) => total + playerCasualShareForMatch(casualSharePerPlay, match, uniqueUserIds, activeUserIds),
+            0,
+          )
         : isPresent
           ? courtSharePerPlayer(args.session, args.roster)
           : 0;
@@ -130,6 +143,23 @@ export function playerBills(args: {
       };
     })
     .sort((a, b) => b.matchesPlayed - a.matchesPlayed || a.user.name.localeCompare(b.user.name));
+}
+
+function activeRosterUserIds(roster: RosterEntry[] | undefined, sessionId: string): Set<string> | null {
+  if (!roster) return null;
+  return new Set(
+    roster
+      .filter((entry) => entry.sessionId === sessionId && entry.isPresent)
+      .map((entry) => entry.userId),
+  );
+}
+
+function matchActiveParticipantCount(
+  match: { playerAId: string; playerBId: string },
+  activeUserIds: Set<string> | null,
+): number {
+  if (!activeUserIds) return matchParticipantCount();
+  return [match.playerAId, match.playerBId].filter((userId) => activeUserIds.has(userId)).length;
 }
 
 function inferWinnerIdFromScore(match: { playerAId: string; playerBId: string; score?: string }): string | undefined {

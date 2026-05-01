@@ -32,7 +32,7 @@ export function BillingStats({
   const [totalMatchesDraft, setTotalMatchesDraft] = useState(() => formatStatNumber(maxMatches(session)));
 
   const courtShare = courtSharePerPlayer(session, state.roster);
-  const fixedPricePerMatch = casualUnitPrice(session, state.matches);
+  const fixedPricePerMatch = casualUnitPrice(session, state.matches, state.roster);
   const shuttleFee = shuttleFeePerMatch(session);
   const sessionCost = session.courtPrice + (sessionMatches.length * session.shuttlePrice) / session.shuttlesPerTube;
 

@@ -38,9 +38,14 @@ export function ParticipantPanel({
     roster: store.state.roster,
     matches: store.state.matches,
   });
-  const activeCount = activeRosterCount(store.state.roster, session.id);
-  const courtShare = courtSharePerPlayer(session, store.state.roster);
-  const fixedPricePerMatch = casualUnitPrice(session, store.state.matches);
+  const statsRoster = pendingRemovedPlayerIds.length > 0
+    ? store.state.roster.filter(
+        (entry) => !(entry.sessionId === session.id && pendingRemovedPlayerIds.includes(entry.userId)),
+      )
+    : store.state.roster;
+  const activeCount = activeRosterCount(statsRoster, session.id);
+  const courtShare = courtSharePerPlayer(session, statsRoster);
+  const fixedPricePerMatch = casualUnitPrice(session, store.state.matches, statsRoster);
   const duplicateRosterNames = duplicateSessionRosterNames(session.id, store.state);
 
   useEffect(
