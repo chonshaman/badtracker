@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { formatVnd } from "../lib/money";
 import { casualUnitPrice, playerBills, shuttleFeePerMatch } from "../lib/sessionMath";
-import type { Match, Session, User } from "../types";
+import type { Match, Session, SessionPublicInfo, TrackerState, User } from "../types";
 
 type Store = ReturnType<typeof import("../lib/store").useTrackerStore>;
 
@@ -107,7 +107,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
         );
       }
 
-      return <SessionPinGate sessionId={sessionId} store={store} />;
+      return <SessionPinGate sessionId={sessionId} session={linkedSession} store={store} />;
     }
 
     return (
@@ -191,6 +191,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
             Add guest and enter
           </button>
         </form>
+        <SessionEntryInfo info={sessionEntryInfo(activeSession, store.state)} />
       </section>
     );
   }
@@ -669,10 +670,24 @@ function RecordMatchModal({
   );
 }
 
-function SessionPinGate({ sessionId, store }: { sessionId: string; store: Store }) {
+function SessionPinGate({ sessionId, session, store }: { sessionId: string; session?: Session; store: Store }) {
   const [pinCode, setPinCode] = useState("");
   const [pinError, setPinError] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
+  const [publicInfo, setPublicInfo] = useState<SessionPublicInfo | undefined>(() =>
+    session ? sessionEntryInfo(session, store.state) : undefined,
+  );
+
+  useEffect(() => {
+    if (session || !store.isRemoteEnabled) return;
+    let isMounted = true;
+    void store.getSessionPublicInfo(sessionId).then((info) => {
+      if (isMounted) setPublicInfo(info);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [sessionId, session, store.isRemoteEnabled]);
 
   async function verifyPin() {
     if (pinCode.length !== 4 || isVerifying) return;
@@ -713,7 +728,25 @@ function SessionPinGate({ sessionId, store }: { sessionId: string; store: Store 
       <button type="submit" className="primary-button" disabled={pinCode.length !== 4 || isVerifying}>
         {isVerifying ? "Verifying..." : "Continue"}
       </button>
+      <SessionEntryInfo info={publicInfo} />
     </form>
+  );
+}
+
+function SessionEntryInfo({ info }: { info?: SessionPublicInfo }) {
+  if (!info?.sessionName && !info?.sessionDate && !info?.hostName) return null;
+
+  return (
+    <div className="session-entry-info">
+      <div>
+        <span>Session</span>
+        <strong>{info.sessionName || info.sessionDate || "Active session"}</strong>
+      </div>
+      <div>
+        <span>Host</span>
+        <strong>{info.hostName || "Not selected"}</strong>
+      </div>
+    </div>
   );
 }
 
@@ -856,6 +889,19 @@ function formatScoreInput(value: string): string {
 
 function isSessionHost(roster: { sessionId: string; userId: string; isHost?: boolean }[], sessionId: string, userId: string): boolean {
   return roster.some((entry) => entry.sessionId === sessionId && entry.userId === userId && entry.isHost);
+}
+
+function sessionEntryInfo(session: Session, state: TrackerState): SessionPublicInfo {
+  const hostEntry = state.roster.find((entry) => entry.sessionId === session.id && entry.isHost);
+  const hostName = hostEntry
+    ? state.users.find((user) => user.id === hostEntry.userId)?.name
+    : undefined;
+
+  return {
+    sessionName: sessionTitle(session),
+    sessionDate: session.date,
+    hostName,
+  };
 }
 
 function readScoreResult(score: string): { formattedScore: string; playerWon: boolean } | null {

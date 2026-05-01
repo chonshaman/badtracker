@@ -11,6 +11,7 @@ import {
   remoteDeleteMatch,
   remoteEndSession,
   remoteGetSessionLinkStatus,
+  remoteGetSessionPublicInfo,
   remoteJoinSession,
   remoteRemoveSessionPlayers,
   remoteSetPaid,
@@ -190,6 +191,14 @@ export function useTrackerStore() {
         return await remoteGetSessionLinkStatus(sessionId);
       } catch {
         return "unknown" as const;
+      }
+    },
+    getSessionPublicInfo: async (sessionId: string) => {
+      if (!isRemoteEnabled) return undefined;
+      try {
+        return await remoteGetSessionPublicInfo(sessionId);
+      } catch {
+        return undefined;
       }
     },
     seedDefaultUsers: () => {

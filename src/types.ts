@@ -46,6 +46,12 @@ export type RosterEntry = {
   isHost: boolean;
 };
 
+export type SessionPublicInfo = {
+  sessionName?: string;
+  sessionDate?: string;
+  hostName?: string;
+};
+
 export type SessionParticipant = {
   sessionId: string;
   userId: string;

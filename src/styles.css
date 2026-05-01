@@ -1468,6 +1468,38 @@ label {
   line-height: 0.86;
 }
 
+.session-entry-info {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.session-entry-info div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.session-entry-info span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.session-entry-info strong {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 900;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .syncing-state {
   position: relative;
 }
@@ -1892,7 +1924,7 @@ label {
   overflow-y: auto;
   display: grid;
   align-content: center;
-  gap: 14px;
+  gap: 24px;
   border-radius: 32px;
   background: var(--paper);
   padding: 28px;

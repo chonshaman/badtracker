@@ -217,6 +217,29 @@ $$;
 
 grant execute on function session_link_status(text) to anon, authenticated;
 
+create or replace function session_public_info(p_session_id text)
+returns table(session_name text, session_date text, host_name text)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    sessions.name as session_name,
+    sessions.date as session_date,
+    host_user.name as host_name
+  from sessions
+  left join session_roster host_roster
+    on host_roster.session_id = sessions.id
+    and host_roster.is_host = true
+  left join users host_user
+    on host_user.id = host_roster.user_id
+  where sessions.id = p_session_id
+    and sessions.status = 'Active'
+  limit 1;
+$$;
+
+grant execute on function session_public_info(text) to anon, authenticated;
+
 drop policy if exists "Public read session roster" on session_roster;
 drop policy if exists "Public insert session roster" on session_roster;
 drop policy if exists "Public update session roster" on session_roster;

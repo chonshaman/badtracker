@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import type { BillingMethod, Match, RosterEntry, Session, SessionParticipant, TrackerState, User } from "../types";
+import type { BillingMethod, Match, RosterEntry, Session, SessionParticipant, SessionPublicInfo, TrackerState, User } from "../types";
 
 const supabaseUrl: string | undefined =
   import.meta.env.VITE_SUPABASE_URL ??
@@ -68,6 +68,12 @@ type RemoteMatch = {
   winner_id?: string | null;
   score?: string | null;
   status: "Valid";
+};
+
+type RemoteSessionPublicInfo = {
+  session_name?: string | null;
+  session_date?: string | null;
+  host_name?: string | null;
 };
 
 async function createAnonymousSession() {
@@ -204,6 +210,20 @@ export async function remoteGetSessionLinkStatus(sessionId: string): Promise<"ac
     method: "POST",
     body: JSON.stringify({ p_session_id: sessionId }),
   });
+}
+
+export async function remoteGetSessionPublicInfo(sessionId: string): Promise<SessionPublicInfo | undefined> {
+  const rows = await request<RemoteSessionPublicInfo[]>("rpc/session_public_info", {
+    method: "POST",
+    body: JSON.stringify({ p_session_id: sessionId }),
+  });
+  const info = rows[0];
+  if (!info) return undefined;
+  return {
+    sessionName: info.session_name ?? undefined,
+    sessionDate: info.session_date ?? undefined,
+    hostName: info.host_name ?? undefined,
+  };
 }
 
 export async function remoteAddUser(user: User) {
