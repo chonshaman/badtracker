@@ -2249,6 +2249,13 @@ label {
   font-weight: 800;
 }
 
+.match-score-side {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .score-primary {
   background: rgba(24, 137, 86, 0.19);
 }
@@ -2266,6 +2273,42 @@ label {
   color: #616161;
   font-size: 0.88rem;
   font-weight: 650;
+}
+
+.match-stake-toggle {
+  min-height: 30px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(23, 52, 44, 0.14);
+  border-radius: 999px;
+  background: #fffdf6;
+  color: var(--muted);
+  padding: 0 10px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.match-stake-toggle.active {
+  border-color: rgba(175, 58, 31, 0.24);
+  background: #fff0e7;
+  color: #af3a1f;
+}
+
+.match-stake-toggle:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.match-stake-toggle:disabled {
+  cursor: default;
 }
 
 .match-card-session {

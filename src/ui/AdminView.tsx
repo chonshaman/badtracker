@@ -1035,6 +1035,8 @@ function ActiveSessionDashboard({
                 session={session}
                 playerId={bill.user.id}
                 highlightMatchId={highlightMatchId}
+                canManageStake={isHost && session.status === "Active"}
+                onToggleStake={store.toggleMatchStake}
               />
             ) : null}
           </div>
@@ -1389,12 +1391,16 @@ function PlayerMatchHistory({
   session,
   playerId,
   highlightMatchId,
+  canManageStake,
+  onToggleStake,
 }: {
   matches: Match[];
   state: TrackerState;
   session: Session;
   playerId: string;
   highlightMatchId?: string;
+  canManageStake: boolean;
+  onToggleStake: (matchId: string) => void;
 }) {
   const player = state.users.find((user) => user.id === playerId);
   const playerMatches = matches.filter(
@@ -1427,6 +1433,8 @@ function PlayerMatchHistory({
             isOpponentHost={isOpponentHost}
             isHighlighted={isHighlighted}
             showSessionName={false}
+            canToggleStake={canManageStake}
+            onToggleStake={() => onToggleStake(match.id)}
             id={`match-history-${match.id}`}
             key={match.id}
           />

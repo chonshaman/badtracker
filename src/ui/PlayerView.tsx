@@ -729,7 +729,7 @@ function RecordMatchModal({
           onClick={() => setIsStake((current) => !current)}
         >
           <div className="stake-control-copy">
-            <span>Loser pay all (kèo độ)</span>
+            <span>Loser pay all (2 chai)</span>
             <p
               className={[
                 "stake-caption",

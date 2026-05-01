@@ -16,6 +16,7 @@ import {
   remoteRemoveSessionPlayers,
   remoteSetPaid,
   remoteSetPresent,
+  remoteUpdateMatchStake,
   remoteUpdateBillingMethod,
   remoteUpdateCourtPrice,
   remoteUpdateMatchDuration,
@@ -485,6 +486,29 @@ export function useTrackerStore() {
       }));
       void runRemote(() => remoteDeleteMatch(matchId));
     },
+    toggleMatchStake: (matchId: string) => {
+      let nextStake = false;
+      let nextWinnerId: string | undefined;
+      let shouldUpdateRemote = false;
+
+      commit((current) => {
+        const targetMatch = current.matches.find((match) => match.id === matchId);
+        if (!targetMatch) return current;
+        nextStake = !targetMatch.isStake;
+        nextWinnerId = nextStake ? inferMatchWinnerId(targetMatch) : undefined;
+        if (nextStake && !nextWinnerId) return current;
+        shouldUpdateRemote = true;
+
+        return {
+          ...current,
+          matches: current.matches.map((match) =>
+            match.id === matchId ? { ...match, isStake: nextStake, winnerId: nextWinnerId } : match,
+          ),
+        };
+      });
+
+      if (shouldUpdateRemote) void runRemote(() => remoteUpdateMatchStake(matchId, nextStake, nextWinnerId));
+    },
   };
 }
 
@@ -501,6 +525,15 @@ function normalizeState(state: TrackerState): TrackerState {
       isHost: entry.isHost ?? false,
     })),
   };
+}
+
+function inferMatchWinnerId(match: Match): string | undefined {
+  if (!match.score) return match.winnerId;
+  const [firstScore, secondScore] = match.score.split(/[-:]/).map((value) => Number(value.trim()));
+  if (!Number.isFinite(firstScore) || !Number.isFinite(secondScore) || firstScore === secondScore) {
+    return match.winnerId;
+  }
+  return firstScore > secondScore ? match.playerAId : match.playerBId;
 }
 
 function removeSessionFromState(state: TrackerState, sessionId: string): TrackerState {

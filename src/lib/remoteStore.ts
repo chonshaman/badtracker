@@ -396,6 +396,13 @@ export async function remoteDeleteMatch(matchId: string) {
   await request(`matches?id=eq.${encodeURIComponent(matchId)}`, { method: "DELETE" });
 }
 
+export async function remoteUpdateMatchStake(matchId: string, isStake: boolean, winnerId?: string) {
+  await request(`matches?id=eq.${encodeURIComponent(matchId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ is_stake: isStake, winner_id: winnerId ?? null }),
+  });
+}
+
 function fromRemoteSession(session: RemoteSession): Session {
   return {
     id: session.id,

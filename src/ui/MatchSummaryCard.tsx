@@ -17,6 +17,8 @@ type MatchSummaryCardProps = {
   isHighlighted?: boolean;
   id?: string;
   showSessionName?: boolean;
+  canToggleStake?: boolean;
+  onToggleStake?: () => void;
 };
 
 export function MatchSummaryCard({
@@ -33,9 +35,14 @@ export function MatchSummaryCard({
   isHighlighted = false,
   id,
   showSessionName = true,
+  canToggleStake = false,
+  onToggleStake,
 }: MatchSummaryCardProps) {
   const isStakeWinner = match.isStake && match.winnerId === currentPlayerId;
   const scoreParts = matchScoreParts(match.score, match.playerAId === currentPlayerId);
+  const opponentId = match.playerAId === currentPlayerId ? match.playerBId : match.playerAId;
+  const isCurrentPlayerStakeLoser = Boolean(match.isStake && match.winnerId && match.winnerId !== currentPlayerId);
+  const isOpponentStakeLoser = Boolean(match.isStake && match.winnerId && match.winnerId !== opponentId);
   const className = [
     "match-card",
     match.isStake ? (isStakeWinner ? "stake-win" : "stake-loss") : "",
@@ -50,7 +57,12 @@ export function MatchSummaryCard({
             {currentPlayerName}
             {isCurrentPlayerHost ? <span className="host-badge match-host-badge">Host</span> : null}
           </span>
-          <span className="match-score-bubble score-primary">{scoreParts.current}</span>
+          <span className="match-score-side">
+            {isCurrentPlayerStakeLoser ? (
+              <StakeControl isActive={match.isStake} canToggle={canToggleStake} onToggle={onToggleStake} />
+            ) : null}
+            <span className="match-score-bubble score-primary">{scoreParts.current}</span>
+          </span>
         </div>
         <div className="match-player-line">
           <span className="match-player-name">
@@ -58,11 +70,19 @@ export function MatchSummaryCard({
             {opponentName}
             {isOpponentHost ? <span className="host-badge match-host-badge">Host</span> : null}
           </span>
-          <span className="match-score-bubble score-secondary">{scoreParts.opponent}</span>
+          <span className="match-score-side">
+            {isOpponentStakeLoser ? (
+              <StakeControl isActive={match.isStake} canToggle={canToggleStake} onToggle={onToggleStake} />
+            ) : null}
+            <span className="match-score-bubble score-secondary">{scoreParts.opponent}</span>
+          </span>
         </div>
       </div>
       <div className="match-card-footer">
         <span>#{number} - {formatTime(match.createdAt)}</span>
+        {canToggleStake && !match.isStake ? (
+          <StakeControl isActive={false} canToggle={canToggleStake} onToggle={onToggleStake} />
+        ) : null}
         {showSessionName || to ? (
           <span className="match-card-session">
             {showSessionName ? (
@@ -90,6 +110,33 @@ export function MatchSummaryCard({
     <article className={className} id={id}>
       {content}
     </article>
+  );
+}
+
+function StakeControl({
+  isActive,
+  canToggle,
+  onToggle,
+}: {
+  isActive: boolean;
+  canToggle: boolean;
+  onToggle?: () => void;
+}) {
+  const className = isActive ? "match-stake-toggle active" : "match-stake-toggle";
+  if (!canToggle) return <span className={className}>Loser pay all</span>;
+
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggle?.();
+      }}
+    >
+      Loser pay all
+    </button>
   );
 }
 
