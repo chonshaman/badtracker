@@ -1,10 +1,11 @@
-import { Check, ChevronDown, ChevronRight, Plus, ToggleLeft, ToggleRight, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { formatVnd } from "../lib/money";
 import { casualUnitPrice, playerBills, shuttleFeePerMatch } from "../lib/sessionMath";
 import type { Match, Session, SessionPublicInfo, TrackerState, User } from "../types";
+import { Check, ChevronDown, ChevronRight, Plus, ShuttleIcon, ToggleLeft, ToggleRight, X } from "./icons";
+import { MatchSummaryCard } from "./MatchSummaryCard";
 
 type Store = ReturnType<typeof import("../lib/store").useTrackerStore>;
 
@@ -22,6 +23,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
   const [playerId, setPlayerId] = useState(() => sessionStorage.getItem(playerStorageKey) ?? "");
   const [selectedOpponentId, setSelectedOpponentId] = useState<string | null>(null);
   const [guestName, setGuestName] = useState("");
+  const [selectedHomeSessionId, setSelectedHomeSessionId] = useState("");
   const [sessionLinkStatus, setSessionLinkStatus] = useState<"checking" | "active" | "closed" | "missing" | "unknown">(
     sessionId && store.isRemoteEnabled ? "checking" : "unknown",
   );
@@ -169,6 +171,8 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
           users={roster}
           value={playerId}
           placeholder="Select your name"
+          sessionId={activeSession.id}
+          roster={store.state.roster}
           onChange={setPlayerId}
         />
         <button className="primary-button" disabled={!playerId}>
@@ -188,7 +192,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
             placeholder="Add guest name"
           />
           <button type="submit" className="secondary-button">
-            Add guest and enter
+            JOIN AS GUEST
           </button>
         </form>
         <SessionEntryInfo info={sessionEntryInfo(activeSession, store.state)} />
@@ -207,17 +211,6 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
     .filter((entry) => entry.sessionId === activeSession.id && entry.isPresent)
     .map((entry) => entry.userId);
   const opponents = roster.filter((user) => user.id !== currentUser.id && activeRosterIds.includes(user.id));
-  const myBill = playerBills({
-    session: activeSession,
-    users: store.state.users,
-    roster: store.state.roster,
-    matches: store.state.matches,
-  }).find((bill) => bill.userIds.includes(currentUser.id));
-  const courtFee = myBill?.courtShare ?? 0;
-  const playerFeeMetric = activeSession.billingMethod === "casual"
-    ? casualUnitPrice(activeSession, store.state.matches)
-    : courtFee;
-  const totalDue = myBill?.totalDue ?? 0;
   const currentUserIds = store.state.users
     .filter((user) => user.name.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
     .map((user) => user.id);
@@ -228,8 +221,19 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
       ),
     )
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const latestJoinedSession = joinedSessions[0] ?? activeSession;
-  const latestShuttleCostPerMatch = shuttleFeePerMatch(latestJoinedSession);
+  const selectedHomeSession = joinedSessions.find((session) => session.id === selectedHomeSessionId) ?? joinedSessions[0] ?? activeSession;
+  const selectedHomeBill = playerBills({
+    session: selectedHomeSession,
+    users: store.state.users,
+    roster: store.state.roster,
+    matches: store.state.matches,
+  }).find((bill) => bill.userIds.includes(currentUser.id));
+  const courtFee = selectedHomeBill?.courtShare ?? 0;
+  const playerFeeMetric = selectedHomeSession.billingMethod === "casual"
+    ? casualUnitPrice(selectedHomeSession, store.state.matches)
+    : courtFee;
+  const totalDue = selectedHomeBill?.totalDue ?? 0;
+  const selectedShuttleCostPerMatch = shuttleFeePerMatch(selectedHomeSession);
   const playerReturnPath = `/${activeSession.slug}/session/${activeSession.id}`;
   const previousSessions = store.state.sessions
     .filter(
@@ -244,14 +248,16 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
   return (
     <div className="player-screen">
       <PlayerDebtHeader
-        session={latestJoinedSession}
+        session={selectedHomeSession}
+        sessions={joinedSessions}
+        selectedSessionId={selectedHomeSession.id}
+        onSessionChange={setSelectedHomeSessionId}
         playerId={currentUser.id}
         playerName={currentUser.name}
         totalDue={totalDue}
-        courtFee={courtFee}
         playerFeeMetric={playerFeeMetric}
-        shuttleCostPerMatch={latestShuttleCostPerMatch}
-        matchesPlayed={myMatches.length}
+        shuttleCostPerMatch={selectedShuttleCostPerMatch}
+        matchesPlayed={selectedHomeBill?.matchesPlayed ?? 0}
         backTo={playerReturnPath}
       />
 
@@ -287,6 +293,8 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
               session={activeSession}
               currentUser={currentUser}
               users={store.state.users}
+              roster={store.state.roster}
+              backTo={playerReturnPath}
             />
           ))
         )}
@@ -404,20 +412,24 @@ function ClosedSessionSummary({
 
 function PlayerDebtHeader({
   session,
+  sessions,
+  selectedSessionId,
+  onSessionChange,
   playerId,
   playerName,
   totalDue,
-  courtFee,
   playerFeeMetric,
   shuttleCostPerMatch,
   matchesPlayed,
   backTo,
 }: {
   session: Session;
+  sessions: Session[];
+  selectedSessionId: string;
+  onSessionChange: (sessionId: string) => void;
   playerId: string;
   playerName: string;
   totalDue: number;
-  courtFee: number;
   playerFeeMetric: number;
   shuttleCostPerMatch: number;
   matchesPlayed: number;
@@ -438,21 +450,94 @@ function PlayerDebtHeader({
     <header className={`sticky-player-header debt-header ${flash ? `debt-flash-${flash}` : ""}`}>
       <div className="player-card-greeting">
         <p>Hi, {playerName}</p>
-        <span>{matchesPlayed} {matchesPlayed === 1 ? "match" : "matches"} played</span>
       </div>
-      <h1>{formatVnd(totalDue)}</h1>
+      <Link className="player-money-link" to={`/${session.slug}/admin/${session.id}`} state={{ backTo, playerId }}>
+        <h1>{formatVnd(totalDue)}</h1>
+        <ChevronRight size={18} />
+      </Link>
       <div className="debt-breakdown" aria-label="Debt breakdown">
         <span>{playerFeeLabel(session)}: {formatVnd(playerFeeMetric)}</span>
         <span>Shuttle cost: {formatVnd(shuttleCostPerMatch)}</span>
       </div>
-      <Link className="session-detail-link" to={`/${session.slug}/admin/${session.id}`} state={{ backTo, playerId }}>
-        <span>
-          <strong>{sessionTitle(session)}</strong>
-          <small>{session.date}</small>
-        </span>
-        <ChevronRight size={18} />
-      </Link>
+      <HomeSessionDropdown
+        sessions={sessions}
+        value={selectedSessionId}
+        matchesPlayed={matchesPlayed}
+        onChange={onSessionChange}
+      />
     </header>
+  );
+}
+
+function HomeSessionDropdown({
+  sessions,
+  value,
+  matchesPlayed,
+  onChange,
+}: {
+  sessions: Session[];
+  value: string;
+  matchesPlayed: number;
+  onChange: (sessionId: string) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const selectedSession = sessions.find((session) => session.id === value) ?? sessions[0];
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!dropdownRef.current?.contains(event.target as Node)) setIsOpen(false);
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, [isOpen]);
+
+  if (!selectedSession) return null;
+
+  return (
+    <div className="home-session-dropdown" ref={dropdownRef}>
+      <button
+        type="button"
+        className="home-session-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((current) => !current)}
+      >
+        <span className="home-session-copy">
+          <strong className="session-name-with-icon">
+            <ShuttleIcon className="shuttle-icon" size={18} />
+            <span>{sessionTitle(selectedSession)}</span>
+          </strong>
+          <small>{matchesPlayed} {matchesPlayed === 1 ? "match" : "matches"} played</small>
+        </span>
+        <ChevronDown className="home-session-chevron" size={18} />
+      </button>
+      {isOpen ? (
+        <div className="home-session-menu" role="listbox" aria-label="Select session">
+          {sessions.map((session) => (
+            <button
+              type="button"
+              className={session.id === selectedSession.id ? "home-session-option selected" : "home-session-option"}
+              key={session.id}
+              role="option"
+              aria-selected={session.id === selectedSession.id}
+              onClick={() => {
+                onChange(session.id);
+                setIsOpen(false);
+              }}
+            >
+              <span className="session-name-with-icon">
+                <ShuttleIcon className="shuttle-icon" size={17} />
+                <span>{sessionTitle(session)}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -485,7 +570,10 @@ function PreviousSessions({
         return (
           <Link className="previous-session-card" key={session.id} to={`/${session.slug}/admin/${session.id}`} state={{ backTo, playerId }}>
             <div>
-              <strong>{sessionTitle(session)}</strong>
+              <strong className="session-name-with-icon">
+                <ShuttleIcon className="shuttle-icon" size={17} />
+                <span>{sessionTitle(session)}</span>
+              </strong>
               <span>{session.date}</span>
             </div>
             <div>
@@ -674,6 +762,7 @@ function SessionPinGate({ sessionId, session, store }: { sessionId: string; sess
   const [pinCode, setPinCode] = useState("");
   const [pinError, setPinError] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
+  const pinInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [publicInfo, setPublicInfo] = useState<SessionPublicInfo | undefined>(() =>
     session ? sessionEntryInfo(session, store.state) : undefined,
   );
@@ -701,6 +790,35 @@ function SessionPinGate({ sessionId, session, store }: { sessionId: string; sess
     }
   }
 
+  function updatePinDigit(index: number, value: string) {
+    const digits = value.replace(/\D/g, "").slice(0, 4);
+    if (!digits) {
+      setPinCode((current) => {
+        const next = current.padEnd(4, " ").split("");
+        next[index] = " ";
+        return next.join("").replace(/\s/g, "").slice(0, 4);
+      });
+      setPinError("");
+      return;
+    }
+
+    setPinCode((current) => {
+      const next = current.padEnd(4, " ").split("");
+      digits.split("").forEach((digit, offset) => {
+        if (index + offset < 4) next[index + offset] = digit;
+      });
+      return next.join("").replace(/\s/g, "").slice(0, 4);
+    });
+    const nextIndex = Math.min(3, index + digits.length);
+    pinInputRefs.current[nextIndex]?.focus();
+    setPinError("");
+  }
+
+  function handlePinKeyDown(index: number, key: string) {
+    if (key !== "Backspace" || pinCode[index]) return;
+    pinInputRefs.current[Math.max(0, index - 1)]?.focus();
+  }
+
   return (
     <form
       className="login-card"
@@ -713,16 +831,26 @@ function SessionPinGate({ sessionId, session, store }: { sessionId: string; sess
       <h1>Enter PIN.</h1>
       <label>
         Session PIN
-        <input
-          inputMode="numeric"
-          maxLength={4}
-          value={pinCode}
-          onChange={(event) => {
-            setPinCode(event.target.value.replace(/\D/g, "").slice(0, 4));
-            setPinError("");
-          }}
-          placeholder="4 digits"
-        />
+        <div className="pin-code-grid" aria-label="4 digit session PIN">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <input
+              key={index}
+              ref={(element) => {
+                pinInputRefs.current[index] = element;
+              }}
+              inputMode="numeric"
+              maxLength={1}
+              value={pinCode[index] ?? ""}
+              onChange={(event) => updatePinDigit(index, event.target.value)}
+              onPaste={(event) => {
+                event.preventDefault();
+                updatePinDigit(index, event.clipboardData.getData("text"));
+              }}
+              onKeyDown={(event) => handlePinKeyDown(index, event.key)}
+              aria-label={`PIN digit ${index + 1}`}
+            />
+          ))}
+        </div>
       </label>
       {pinError ? <p className="form-error">{pinError}</p> : null}
       <button type="submit" className="primary-button" disabled={pinCode.length !== 4 || isVerifying}>
@@ -738,25 +866,25 @@ function SessionEntryInfo({ info, showUnavailableHint = false }: { info?: Sessio
     if (!showUnavailableHint) return null;
     return (
       <div className="session-entry-info unavailable">
-        <div>
-          <span>Session</span>
-          <strong>Info unavailable</strong>
-        </div>
+        <p>You are joining this session. Host info appears after the latest Supabase schema is applied.</p>
         <p>Run the latest Supabase schema so shared links can show session and host before PIN entry.</p>
       </div>
     );
   }
 
+  const sessionName = info.sessionName || info.sessionDate || "this session";
+  const hostName = info.hostName ? `@${info.hostName}` : "the host";
+
   return (
     <div className="session-entry-info">
-      <div>
-        <span>Session</span>
-        <strong>{info.sessionName || info.sessionDate || "Active session"}</strong>
-      </div>
-      <div>
-        <span>Host</span>
-        <strong>{info.hostName || "Not selected"}</strong>
-      </div>
+      <p>
+        You are joining session{" "}
+        <strong className="session-name-with-icon inline-session-name">
+          <ShuttleIcon className="shuttle-icon" size={16} />
+          <span>{sessionName}</span>
+        </strong>{" "}
+        hosted by <strong>{hostName}</strong>.
+      </p>
     </div>
   );
 }
@@ -765,11 +893,15 @@ function UserDropdown({
   users,
   value,
   placeholder,
+  sessionId,
+  roster,
   onChange,
 }: {
   users: User[];
   value: string;
   placeholder: string;
+  sessionId?: string;
+  roster?: { sessionId: string; userId: string; isHost?: boolean }[];
   onChange: (userId: string) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -796,13 +928,19 @@ function UserDropdown({
         aria-expanded={isOpen}
         onClick={() => setIsOpen((current) => !current)}
       >
-        <span>{selectedUser?.name ?? placeholder}</span>
+        <span className="user-option-name">
+          <span>{selectedUser?.name ?? placeholder}</span>
+          {selectedUser && sessionId && roster && isSessionHost(roster, sessionId, selectedUser.id) ? (
+            <span className="host-badge dropdown-host-badge">Host</span>
+          ) : null}
+        </span>
         <ChevronDown size={18} />
       </button>
       {isOpen ? (
         <div className="custom-select-menu" role="listbox" aria-label={placeholder}>
           {users.map((user) => {
             const isSelected = user.id === value;
+            const isHost = Boolean(sessionId && roster && isSessionHost(roster, sessionId, user.id));
             return (
               <button
                 type="button"
@@ -813,9 +951,12 @@ function UserDropdown({
                 onClick={() => {
                   onChange(user.id);
                   setIsOpen(false);
-                }}
-              >
-                <span>{user.name}</span>
+              }}
+            >
+                <span className="user-option-name">
+                  <span>{user.name}</span>
+                  {isHost ? <span className="host-badge dropdown-host-badge">Host</span> : null}
+                </span>
                 {isSelected ? <Check size={17} /> : null}
               </button>
             );
@@ -832,37 +973,73 @@ function MatchCard({
   session,
   currentUser,
   users,
+  roster,
+  backTo,
 }: {
   match: Match;
   number: number;
   session: Session;
   currentUser: User;
   users: User[];
+  roster: { sessionId: string; userId: string; isHost?: boolean }[];
+  backTo: string;
 }) {
   const opponentId = match.playerAId === currentUser.id ? match.playerBId : match.playerAId;
   const opponent = users.find((user) => user.id === opponentId)?.name ?? "Unknown";
-  const isStakeWinner = match.isStake && match.winnerId === currentUser.id;
-  const isStakeLoser = match.isStake && !isStakeWinner;
+  const isCurrentUserHost = isSessionHost(roster, session.id, currentUser.id);
+  const isOpponentHost = isSessionHost(roster, session.id, opponentId);
   return (
-    <article className={`match-card ${match.isStake ? (isStakeWinner ? "stake-win" : "stake-loss") : ""}`}>
-      <div className="match-card-top">
-        <strong>Match: #{String(number).padStart(2, "0")}</strong>
-        <span>{formatTime(match.createdAt)}</span>
+    <MatchSummaryCard
+      match={match}
+      number={number}
+      sessionName={sessionTitle(session)}
+      currentPlayerId={currentUser.id}
+      currentPlayerName={currentUser.name}
+      opponentName={opponent}
+      isCurrentPlayerHost={isCurrentUserHost}
+      isOpponentHost={isOpponentHost}
+      to={`/${session.slug}/admin/${session.id}`}
+      state={{ backTo, playerId: currentUser.id, highlightMatchId: match.id }}
+    />
+  );
+}
+
+/*
+      <div className="match-card-scoreboard">
+        <div className="match-player-line with-divider">
+          <span className="match-player-name">
+            {!match.score ? <BadmintonIcon size={16} /> : null}
+            {currentUser.name}
+            {isCurrentUserHost ? <span className="host-badge match-host-badge">Host</span> : null}
+          </span>
+          <span className="match-score-bubble score-primary">{scoreParts.current}</span>
+        </div>
+        <div className="match-player-line">
+          <span className="match-player-name">
+            {!match.score ? <BadmintonIcon size={16} /> : null}
+            {opponent}
+            {isOpponentHost ? <span className="host-badge match-host-badge">Host</span> : null}
+          </span>
+          <span className="match-score-bubble score-secondary">{scoreParts.opponent}</span>
+        </div>
       </div>
-      <p>
-        <span>{currentUser.name}</span>
-        <b>VS</b>
-        <span>{opponent}</span>
-      </p>
-      {match.score ? <div className="score-pill">Score {match.score}</div> : null}
+      <div className="match-card-footer">
+        <span>#{number} - {formatTime(match.createdAt)}</span>
+        <span className="match-card-session">
+          <span className="session-name-with-icon">
+            <ShuttleIcon className="shuttle-icon" size={16} />
+            <span>{sessionTitle(session)}</span>
+          </span>
+          <ChevronRight size={18} />
+        </span>
+      </div>
       {match.isStake ? (
         <small>{isStakeWinner ? "🏆 Won the stakes! Fee: 0 VND" : "🔥 Lost the stakes. Total charged: 2x"}</small>
       ) : (
         <small>Status: Recorded · {sessionTitle(session)}</small>
       )}
-    </article>
-  );
-}
+    </Link>
+*/
 
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat("vi-VN", {
@@ -873,6 +1050,15 @@ function formatTime(value: string): string {
 
 function sessionTitle(session: Session): string {
   return session.name?.trim() || session.date;
+}
+
+function matchScoreParts(score: string | undefined, isCurrentPlayerA: boolean): { current: string; opponent: string } {
+  if (!score) return { current: "-", opponent: "-" };
+  const [firstScore, secondScore] = score.split(/[-:]/).map((value) => value.trim());
+  if (!firstScore || !secondScore) return { current: "-", opponent: "-" };
+  return isCurrentPlayerA
+    ? { current: firstScore, opponent: secondScore }
+    : { current: secondScore, opponent: firstScore };
 }
 
 function playerFeeLabel(session: Session): string {

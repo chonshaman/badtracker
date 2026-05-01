@@ -1,10 +1,11 @@
 import { createPortal } from "react-dom";
-import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Download, Info, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { presets } from "../data/defaults";
 import { formatVnd, parseMoneyInput } from "../lib/money";
 import type { DeletedSessionSnapshot } from "../lib/store";
+import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Download, Info, Plus, ShuttleIcon, Trash2, X } from "./icons";
+import { MatchSummaryCard } from "./MatchSummaryCard";
 import {
   activeRosterCount,
   calculateFee,
@@ -25,6 +26,7 @@ type AdminViewProps = {
   initialCreate?: boolean;
   detailBackTo?: string;
   detailPlayerId?: string;
+  detailHighlightMatchId?: string;
 };
 
 type SetupDraft = {
@@ -57,7 +59,7 @@ function runViewTransition(update: () => void) {
   if (!transition) update();
 }
 
-export function AdminView({ slug, store, initialSessionId, initialCreate = false, detailBackTo, detailPlayerId }: AdminViewProps) {
+export function AdminView({ slug, store, initialSessionId, initialCreate = false, detailBackTo, detailPlayerId, detailHighlightMatchId }: AdminViewProps) {
   const navigate = useNavigate();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(initialSessionId ?? null);
   const [isCreating, setIsCreating] = useState(initialCreate);
@@ -155,6 +157,7 @@ export function AdminView({ slug, store, initialSessionId, initialCreate = false
               store={store}
               onDeleted={scheduleSessionDelete}
               currentPlayerId={detailPlayerId}
+              highlightMatchId={detailHighlightMatchId}
             />
           </div>
         ) : selectedSessionId && !store.isSyncing ? (
@@ -285,7 +288,10 @@ function SessionList({
               onClick={() => onSelect(session.id)}
             >
               <div>
-                <strong>{sessionTitle(session)}</strong>
+                <strong className="session-name-with-icon">
+                  <ShuttleIcon className="shuttle-icon" size={17} />
+                  <span>{sessionTitle(session)}</span>
+                </strong>
                 <span>
                   {session.date} - {formatVnd(shuttleFeePerMatch(session))} / match
                 </span>
@@ -628,12 +634,14 @@ function ActiveSessionDashboard({
   store,
   onDeleted,
   currentPlayerId,
+  highlightMatchId,
 }: {
   session: Session;
   role: "host" | "player";
   store: Store;
   onDeleted: (snapshot: DeletedSessionSnapshot) => void;
   currentPlayerId?: string;
+  highlightMatchId?: string;
 }) {
   const isHost = role === "host";
   const shareLink = `${window.location.origin}/${session.slug}/session/${session.id}`;
@@ -655,6 +663,7 @@ function ActiveSessionDashboard({
   const [collapsingRemovedPlayerIds, setCollapsingRemovedPlayerIds] = useState<string[]>([]);
   const removePlayerTimersRef = useRef<Record<string, number>>({});
   const collapsePlayerTimersRef = useRef<Record<string, number>>({});
+  const autoExpandedPlayerRef = useRef<string | undefined>(undefined);
   const bills = playerBills({
     session,
     users: store.state.users,
@@ -709,6 +718,27 @@ function ActiveSessionDashboard({
     },
     [],
   );
+
+  useEffect(() => {
+    if (!currentPlayerId) return;
+    if (autoExpandedPlayerRef.current === currentPlayerId) return;
+    const currentBill = bills.find((bill) => bill.userIds.includes(currentPlayerId));
+    if (currentBill) {
+      setExpandedPlayerId(currentBill.user.id);
+      autoExpandedPlayerRef.current = currentPlayerId;
+    }
+  }, [currentPlayerId, bills]);
+
+  useEffect(() => {
+    if (!highlightMatchId) return;
+    const timeoutId = window.setTimeout(() => {
+      document.getElementById(`match-history-${highlightMatchId}`)?.scrollIntoView({
+        block: "center",
+        behavior: "smooth",
+      });
+    }, 180);
+    return () => window.clearTimeout(timeoutId);
+  }, [highlightMatchId, expandedPlayerId]);
 
   function submitCourtPrice() {
     const nextCourtPrice = parseCourtMoneyInput(courtPriceDraft);
@@ -810,7 +840,10 @@ function ActiveSessionDashboard({
           <p className="eyebrow">
             {session.status} session since {formatTime(session.createdAt)}
           </p>
-          <h2>{sessionTitle(session)}</h2>
+          <h2 className="session-name-with-icon">
+            <ShuttleIcon className="shuttle-icon" size={20} />
+            <span>{sessionTitle(session)}</span>
+          </h2>
         </div>
         <div className="header-actions">
           {isHost && session.status === "Active" ? (
@@ -973,7 +1006,13 @@ function ActiveSessionDashboard({
             </div>
             )}
             {!isPendingRemoval && expandedPlayerId === bill.user.id ? (
-              <PlayerMatchHistory matches={sessionMatches} state={store.state} playerId={bill.user.id} />
+              <PlayerMatchHistory
+                matches={sessionMatches}
+                state={store.state}
+                session={session}
+                playerId={bill.user.id}
+                highlightMatchId={highlightMatchId}
+              />
             ) : null}
           </div>
           );
@@ -1211,7 +1250,13 @@ function DeletedSessionToast({
     <div className="undo-toast" role="status" aria-live="polite">
       <div>
         <strong>The session has been deleted.</strong>
-        <span>{sessionName} will be permanently deleted in {remainingSeconds}s.</span>
+        <span>
+          <span className="session-name-with-icon inline-session-name">
+            <ShuttleIcon className="shuttle-icon" size={15} />
+            <span>{sessionName}</span>
+          </span>{" "}
+          will be permanently deleted in {remainingSeconds}s.
+        </span>
       </div>
       <button type="button" onClick={onUndo}>
         Undo
@@ -1235,7 +1280,13 @@ function ConfirmSessionDeleteModal({
       <div className="confirm-modal">
         <p className="eyebrow">Delete session</p>
         <h2>Delete this session?</h2>
-        <p>{sessionName} will disappear now. You can undo for 7 seconds before it is removed from Supabase.</p>
+        <p>
+          <span className="session-name-with-icon inline-session-name">
+            <ShuttleIcon className="shuttle-icon" size={16} />
+            <span>{sessionName}</span>
+          </span>{" "}
+          will disappear now. You can undo for 7 seconds before it is removed from Supabase.
+        </p>
         <div className="button-row">
           <button type="button" className="secondary-button" onClick={onCancel}>
             Cancel
@@ -1264,7 +1315,13 @@ function ConfirmEndSessionModal({
       <div className="confirm-modal">
         <p className="eyebrow">End session</p>
         <h2>Close this session?</h2>
-        <p>{sessionName} will be marked closed and players can no longer record new matches.</p>
+        <p>
+          <span className="session-name-with-icon inline-session-name">
+            <ShuttleIcon className="shuttle-icon" size={16} />
+            <span>{sessionName}</span>
+          </span>{" "}
+          will be marked closed and players can no longer record new matches.
+        </p>
         <div className="button-row">
           <button type="button" className="secondary-button" onClick={onCancel}>
             Cancel
@@ -1306,11 +1363,15 @@ function MatchLogRow({
 function PlayerMatchHistory({
   matches,
   state,
+  session,
   playerId,
+  highlightMatchId,
 }: {
   matches: Match[];
   state: TrackerState;
+  session: Session;
   playerId: string;
+  highlightMatchId?: string;
 }) {
   const player = state.users.find((user) => user.id === playerId);
   const playerMatches = matches.filter(
@@ -1327,23 +1388,24 @@ function PlayerMatchHistory({
         const isPlayerA = match.playerAId === playerId;
         const opponentId = isPlayerA ? match.playerBId : match.playerAId;
         const opponent = state.users.find((user) => user.id === opponentId)?.name ?? "Unknown";
-        const result = matchResult(match.score, isPlayerA);
+        const isHighlighted = match.id === highlightMatchId;
+        const isCurrentPlayerHost = state.roster.some((entry) => entry.sessionId === session.id && entry.userId === player.id && entry.isHost);
+        const isOpponentHost = state.roster.some((entry) => entry.sessionId === session.id && entry.userId === opponentId && entry.isHost);
 
         return (
-          <article className="player-history-card" key={match.id}>
-            <div className="match-card-top">
-              <strong>Match #{String(playerMatches.length - index).padStart(2, "0")}</strong>
-              <span>{formatTime(match.createdAt)}</span>
-            </div>
-            <p>
-              <span>{player.name}</span>
-              <b className={`match-result-${result.toLowerCase()}`}>{result}</b>
-              <span>{opponent}</span>
-            </p>
-            <div className="history-meta">
-              <span>Score: {match.score || "No score"}</span>
-            </div>
-          </article>
+          <MatchSummaryCard
+            match={match}
+            number={playerMatches.length - index}
+            sessionName={sessionTitle(session)}
+            currentPlayerId={player.id}
+            currentPlayerName={player.name}
+            opponentName={opponent}
+            isCurrentPlayerHost={isCurrentPlayerHost}
+            isOpponentHost={isOpponentHost}
+            isHighlighted={isHighlighted}
+            id={`match-history-${match.id}`}
+            key={match.id}
+          />
         );
       })}
     </div>

@@ -1,10 +1,11 @@
-import { useLayoutEffect } from "react";
+import { lazy, Suspense, useLayoutEffect } from "react";
 import { Link, useLocation, useMatch, useParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { useStore } from "../lib/storeContext";
-import { AdminView } from "./AdminView";
 import { ErrorBoundary } from "./ErrorBoundary";
-import { PlayerView } from "./PlayerView";
+
+const AdminView = lazy(() => import("./AdminView").then((module) => ({ default: module.AdminView })));
+const PlayerView = lazy(() => import("./PlayerView").then((module) => ({ default: module.PlayerView })));
 
 export function AppShell() {
   const location = useLocation();
@@ -16,9 +17,10 @@ export function AppShell() {
   const reportSessionId = adminDetailMatch?.params.reportSessionId;
   const sessionId = sessionMatch?.params.sessionId;
   const shouldCreateSession = new URLSearchParams(location.search).get("create") === "1";
-  const routeState = location.state as { backTo?: string; playerId?: string } | null;
+  const routeState = location.state as { backTo?: string; playerId?: string; highlightMatchId?: string } | null;
   const detailBackTo = routeState?.backTo;
   const detailPlayerId = routeState?.playerId;
+  const detailHighlightMatchId = routeState?.highlightMatchId;
   const store = useStore();
   const activeSession = sessionId
     ? store.state.sessions.find((session) => session.id === sessionId && session.status === "Active")
@@ -42,18 +44,21 @@ export function AppShell() {
 
         <ErrorBoundary resetKey={location.pathname}>
           <div className={`route-view route-view-${mode}`}>
-            {mode === "admin" ? (
-              <AdminView
-                slug={slug}
-                store={store}
-                initialSessionId={reportSessionId}
-                initialCreate={shouldCreateSession}
-                detailBackTo={detailBackTo}
-                detailPlayerId={detailPlayerId}
-              />
-            ) : (
-              <PlayerView slug={slug} sessionId={sessionId} store={store} activeSession={activeSession} />
-            )}
+            <Suspense fallback={<div className="route-loading">Loading court...</div>}>
+              {mode === "admin" ? (
+                <AdminView
+                  slug={slug}
+                  store={store}
+                  initialSessionId={reportSessionId}
+                  initialCreate={shouldCreateSession}
+                  detailBackTo={detailBackTo}
+                  detailPlayerId={detailPlayerId}
+                  detailHighlightMatchId={detailHighlightMatchId}
+                />
+              ) : (
+                <PlayerView slug={slug} sessionId={sessionId} store={store} activeSession={activeSession} />
+              )}
+            </Suspense>
           </div>
         </ErrorBoundary>
       </main>
