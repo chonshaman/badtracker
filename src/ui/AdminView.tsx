@@ -334,6 +334,8 @@ function SessionSetup({
   const setupPlayers = setupUsers.filter(
     (user) => !hiddenUserIds.includes(user.id) && !isHostPlaceholderUser(user),
   );
+  const selectedPlayerCount = uniqueUserIdsByName(selectedUsers, setupUsers).length;
+  const setupEstimate = estimateSetupPrice(draft, selectedPlayerCount);
 
   useEffect(() => {
     const prefs = readSetupRosterPrefs(setupUsers);
@@ -496,6 +498,10 @@ function SessionSetup({
             <Info size={16} />
             <span>Standard splits court by present players and shuttle by each match. Casual pools all costs by matches played.</span>
           </div>
+          <div className="formula-card">
+            <strong>{formatVnd(setupEstimate.primary)}</strong>
+            <span>{setupEstimate.caption}</span>
+          </div>
         </div>
       )}
 
@@ -583,8 +589,8 @@ function SessionSetup({
 
       {step === 3 && (
         <div className="launch-card">
-          <p>{uniqueUserIdsByName(selectedUsers, setupUsers).length} players selected</p>
-          <strong>{formatVnd(draft.courtPrice)} total court money</strong>
+          <p>{selectedPlayerCount} players selected</p>
+          <strong>{formatVnd(setupEstimate.primary)} {setupEstimate.shortLabel}</strong>
           <span>
             Max matches: {Math.floor(draft.totalCourtTime / draft.matchDuration)} from{" "}
             {draft.totalCourtTime} court-minutes.
@@ -634,10 +640,16 @@ function ActiveSessionDashboard({
   const isHost = role === "host";
   const [isEndConfirmOpen, setIsEndConfirmOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [pendingRemovedPlayerIds, setPendingRemovedPlayerIds] = useState<string[]>([]);
+  const previewRoster = pendingRemovedPlayerIds.length > 0
+    ? store.state.roster.filter(
+        (entry) => !(entry.sessionId === session.id && pendingRemovedPlayerIds.includes(entry.userId)),
+      )
+    : store.state.roster;
   const bills = playerBills({
     session,
     users: store.state.users,
-    roster: store.state.roster,
+    roster: previewRoster,
     matches: store.state.matches,
   });
   const sessionMatches = store.state.matches
@@ -673,6 +685,7 @@ function ActiveSessionDashboard({
         isHost={isHost}
         currentPlayerId={currentPlayerId}
         highlightMatchId={highlightMatchId}
+        onPendingRemovalIdsChange={setPendingRemovedPlayerIds}
       />
       <BillingSettings
         isHost={isHost}
@@ -682,7 +695,7 @@ function ActiveSessionDashboard({
 
       <BillingStats
         session={session}
-        state={store.state}
+        state={{ ...store.state, roster: previewRoster }}
         store={store}
         isHost={isHost}
         sessionMatches={sessionMatches}
@@ -1062,6 +1075,28 @@ function NumberField({
       </span>
     </label>
   );
+}
+
+function estimateSetupPrice(draft: SetupDraft, playerCount: number): { primary: number; caption: string; shortLabel: string } {
+  const maxMatchCount = draft.matchDuration > 0 ? draft.totalCourtTime / draft.matchDuration : 0;
+  const shuttlePerMatch = draft.shuttlesPerTube > 0 ? draft.shuttlePrice / draft.shuttlesPerTube : 0;
+  if (draft.billingMethod === "casual") {
+    const individualPlays = maxMatchCount > 0 ? maxMatchCount * 2 : 0;
+    const fixedPrice = individualPlays > 0 ? (draft.courtPrice + maxMatchCount * shuttlePerMatch) / individualPlays : 0;
+    return {
+      primary: fixedPrice,
+      caption: "Estimated fixed match price if all court time is used",
+      shortLabel: "estimated / match",
+    };
+  }
+
+  const courtShare = playerCount > 0 ? draft.courtPrice / playerCount : 0;
+  const playerShuttleShare = shuttlePerMatch / 2;
+  return {
+    primary: courtShare,
+    caption: `Estimated court share/person, plus ${formatVnd(playerShuttleShare)} shuttle per match`,
+    shortLabel: "estimated court share/person",
+  };
 }
 
 function formatTime(value: string): string {

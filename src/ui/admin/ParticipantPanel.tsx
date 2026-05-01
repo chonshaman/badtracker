@@ -14,6 +14,7 @@ export function ParticipantPanel({
   isHost,
   currentPlayerId,
   highlightMatchId,
+  onPendingRemovalIdsChange,
 }: {
   session: Session;
   store: Store;
@@ -21,6 +22,7 @@ export function ParticipantPanel({
   isHost: boolean;
   currentPlayerId?: string;
   highlightMatchId?: string;
+  onPendingRemovalIdsChange?: (userIds: string[]) => void;
 }) {
   const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
   const [participantName, setParticipantName] = useState("");
@@ -48,6 +50,10 @@ export function ParticipantPanel({
     },
     [],
   );
+
+  useEffect(() => {
+    onPendingRemovalIdsChange?.(pendingRemovedPlayerIds);
+  }, [onPendingRemovalIdsChange, pendingRemovedPlayerIds]);
 
   useEffect(() => {
     if (!currentPlayerId) return;
