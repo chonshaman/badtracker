@@ -11,6 +11,7 @@ import {
   Delete02Icon,
   Download01Icon,
   InformationCircleIcon,
+  RefreshIcon as HugeRefreshIcon,
   Tick02Icon,
   ToggleOffIcon,
   ToggleOnIcon,
@@ -78,6 +79,10 @@ export function Info(props: IconProps) {
 
 export function Plus(props: IconProps) {
   return <Icon icon={Add01Icon} {...props} />;
+}
+
+export function RefreshIcon(props: IconProps) {
+  return <Icon icon={HugeRefreshIcon} {...props} />;
 }
 
 export function Trash2(props: IconProps) {

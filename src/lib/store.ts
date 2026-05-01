@@ -167,6 +167,21 @@ export function useTrackerStore() {
     isRemoteEnabled,
     isSyncing,
     syncError,
+    refreshRemoteNow: async () => {
+      if (!isRemoteEnabled || pendingRemoteWrites.current > 0) return;
+      setIsSyncing(true);
+      try {
+        const remoteState = applyLocalOnlyDeletes(await loadRemoteState(defaultState.users));
+        stateRef.current = remoteState;
+        setState(remoteState);
+        writeState(remoteState);
+        setSyncError(null);
+      } catch (error) {
+        setSyncError(error instanceof Error ? error.message : "Unable to sync with Supabase.");
+      } finally {
+        setIsSyncing(false);
+      }
+    },
     claimSessionAccess: (sessionId: string, role: "host" | "player" = "player") => {
       void runRemote(() => remoteClaimSessionAccess(sessionId, role));
     },

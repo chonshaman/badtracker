@@ -16,6 +16,7 @@ type MatchSummaryCardProps = {
   state?: unknown;
   isHighlighted?: boolean;
   id?: string;
+  showSessionName?: boolean;
 };
 
 export function MatchSummaryCard({
@@ -31,6 +32,7 @@ export function MatchSummaryCard({
   state,
   isHighlighted = false,
   id,
+  showSessionName = true,
 }: MatchSummaryCardProps) {
   const isStakeWinner = match.isStake && match.winnerId === currentPlayerId;
   const scoreParts = matchScoreParts(match.score, match.playerAId === currentPlayerId);
@@ -61,13 +63,17 @@ export function MatchSummaryCard({
       </div>
       <div className="match-card-footer">
         <span>#{number} - {formatTime(match.createdAt)}</span>
-        <span className="match-card-session">
-          <span className="session-name-with-icon">
-            <ShuttleIcon className="shuttle-icon" size={16} />
-            <span>{sessionName}</span>
+        {showSessionName || to ? (
+          <span className="match-card-session">
+            {showSessionName ? (
+              <span className="session-name-with-icon">
+                <ShuttleIcon className="shuttle-icon" size={16} />
+                <span>{sessionName}</span>
+              </span>
+            ) : null}
+            {to ? <ChevronRight size={18} /> : null}
           </span>
-          {to ? <ChevronRight size={18} /> : null}
-        </span>
+        ) : null}
       </div>
     </>
   );

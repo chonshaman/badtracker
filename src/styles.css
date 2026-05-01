@@ -1002,6 +1002,17 @@ label {
   gap: 8px;
 }
 
+.share-card-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.share-card-title h3 {
+  margin-bottom: 0;
+}
+
 .share-card h3,
 .share-card p {
   margin-bottom: 6px;
@@ -1016,6 +1027,10 @@ label {
   display: block;
   color: var(--accent-dark);
   font-weight: 800;
+}
+
+.database-status.enabled {
+  color: #188956;
 }
 
 .pin-chip {
@@ -1034,7 +1049,7 @@ label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin: 2px 0 8px;
+  margin: 0;
 }
 
 .pin-copy-button {
@@ -1122,9 +1137,31 @@ label {
   width: 100%;
   background: transparent;
   color: var(--ink);
-  padding: 0;
+  padding: 0 8px;
   cursor: pointer;
   text-align: left;
+  transition:
+    background 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.leader-row:hover {
+  border-radius: 14px;
+  border-bottom-color: transparent;
+  background: rgba(255, 253, 246, 0.72);
+  box-shadow: 0 10px 24px rgba(44, 34, 18, 0.06);
+}
+
+.leaderboard-player.is-expanded .leader-row {
+  border-top-color: transparent;
+  border-radius: 14px;
+  background: rgba(255, 253, 246, 0);
+  box-shadow: none;
+}
+
+.leaderboard-player.is-expanded .leader-row:hover {
+  box-shadow: none;
 }
 
 .leaderboard-header {
@@ -1137,6 +1174,7 @@ label {
 .participant-stats,
 .debt-breakdown {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 8px;
   margin: 0px 0px 16px 0px;
@@ -1144,12 +1182,62 @@ label {
 
 .participant-stats span,
 .debt-breakdown span {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
   border-radius: 99px;
   background: #e6ffd71a;
   color: #23723f;
   padding: 7px 10px;
   font-size: 0.78rem;
   font-weight: 900;
+}
+
+.participant-share-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.participant-refresh-button {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(35, 114, 63, 0.16);
+  border-radius: 50%;
+  background: #fffdf6;
+  color: #23723f;
+  padding: 0;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.participant-refresh-button:hover:not(:disabled) {
+  border-color: rgba(35, 114, 63, 0.32);
+  background: #e6ffd7;
+  color: #188956;
+  box-shadow: 0 8px 18px rgba(35, 114, 63, 0.12);
+  transform: translateY(-1px) rotate(18deg);
+}
+
+.participant-refresh-button:active:not(:disabled) {
+  transform: translateY(0) rotate(0deg) scale(0.96);
+}
+
+.participant-refresh-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.participant-refresh-button:disabled svg {
+  animation: refresh-spin 850ms linear infinite;
 }
 
 .leaderboard-player.not-present {
@@ -1384,6 +1472,18 @@ label {
   display: grid;
   gap: 10px;
   padding: 0 0 14px;
+}
+
+@media (min-width: 721px) {
+  .player-history {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding-top: 12px;
+  }
+
+  .player-history .empty-state {
+    grid-column: 1 / -1;
+  }
 }
 
 .player-history-card {
@@ -2672,6 +2772,12 @@ label {
   }
 }
 
+@keyframes refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes empty-state-in {
   from {
     opacity: 0;
@@ -2885,6 +2991,7 @@ label {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 34px;
     gap: 12px;
+    margin-top: 6px;
   }
 
   .bill-toggles .paid-toggle {

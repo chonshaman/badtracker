@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { presets } from "../data/defaults";
 import { formatVnd, parseMoneyInput } from "../lib/money";
 import type { DeletedSessionSnapshot } from "../lib/store";
-import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Download, Info, Plus, ShuttleIcon, Trash2, X } from "./icons";
+import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Download, Info, Plus, RefreshIcon, ShuttleIcon, Trash2, X } from "./icons";
 import { MatchSummaryCard } from "./MatchSummaryCard";
 import {
   activeRosterCount,
@@ -659,6 +659,7 @@ function ActiveSessionDashboard({
   const [isEndConfirmOpen, setIsEndConfirmOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [participantName, setParticipantName] = useState("");
+  const [isParticipantRefreshCoolingDown, setIsParticipantRefreshCoolingDown] = useState(false);
   const [pendingRemovedPlayerIds, setPendingRemovedPlayerIds] = useState<string[]>([]);
   const [collapsingRemovedPlayerIds, setCollapsingRemovedPlayerIds] = useState<string[]>([]);
   const removePlayerTimersRef = useRef<Record<string, number>>({});
@@ -805,6 +806,13 @@ function ActiveSessionDashboard({
     setParticipantName("");
   }
 
+  async function refreshParticipants() {
+    if (!store.isRemoteEnabled || store.isSyncing || isParticipantRefreshCoolingDown) return;
+    setIsParticipantRefreshCoolingDown(true);
+    await store.refreshRemoteNow();
+    window.setTimeout(() => setIsParticipantRefreshCoolingDown(false), 3500);
+  }
+
   function scheduleRemovePlayer(userId: string) {
     const bill = bills.find((candidate) => candidate.user.id === userId);
     if (bill?.isHost || pendingRemovedPlayerIds.includes(userId)) return;
@@ -858,7 +866,18 @@ function ActiveSessionDashboard({
         <div className="share-card">
           <div className="share-card-main">
             <p className="eyebrow">Share session</p>
-            <h3>Player join link</h3>
+            <div className="share-card-title">
+              <h3>Player join link</h3>
+              {session.pinCode ? (
+                <div className="pin-copy-wrap">
+                  {isPinCopyTipVisible ? <div className="copy-tooltip">Copied PIN</div> : null}
+                  <div className="pin-chip">PIN {session.pinCode}</div>
+                  <button type="button" className="pin-copy-button" onClick={copyPinCode} aria-label="Copy PIN code">
+                    <Copy size={15} />
+                  </button>
+                </div>
+              ) : null}
+            </div>
             <p>{shareLink}</p>
             <div className="copy-action">
               {isCopyTipVisible ? <div className="copy-tooltip">Copied link</div> : null}
@@ -873,16 +892,9 @@ function ActiveSessionDashboard({
             src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(shareLink)}`}
           />
           <div className="share-meta">
-            {session.pinCode ? (
-              <div className="pin-copy-wrap">
-                {isPinCopyTipVisible ? <div className="copy-tooltip">Copied PIN</div> : null}
-                <div className="pin-chip">PIN {session.pinCode}</div>
-                <button type="button" className="pin-copy-button" onClick={copyPinCode} aria-label="Copy PIN code">
-                  <Copy size={15} />
-                </button>
-              </div>
-            ) : null}
-            <small>{store.isRemoteEnabled ? "Supabase sync enabled." : "Local mode only."}</small>
+            <small className={store.isRemoteEnabled ? "database-status enabled" : "database-status"}>
+              {store.isRemoteEnabled ? "Database sync enabled." : "Local mode only."}
+            </small>
             {store.syncError ? <small>Sync issue: {store.syncError}</small> : null}
           </div>
         </div>
@@ -893,9 +905,19 @@ function ActiveSessionDashboard({
           <h3>Participants</h3>
           <div className="participant-stats">
             <span>{activeCount} present</span>
-            <span>
+            <span className="participant-share-stat">
               {session.billingMethod === "casual" ? "Fixed Price/match" : "Court share"}{" "}
               {formatVnd(session.billingMethod === "casual" ? fixedPricePerMatch : courtShare)}
+              <button
+                type="button"
+                className="participant-refresh-button"
+                onClick={refreshParticipants}
+                disabled={!store.isRemoteEnabled || store.isSyncing || isParticipantRefreshCoolingDown}
+                aria-label="Refresh participants from database"
+                title={store.isRemoteEnabled ? "Refresh participants" : "Database sync is not enabled"}
+              >
+                <RefreshIcon size={15} />
+              </button>
             </span>
           </div>
         </div>
@@ -932,6 +954,7 @@ function ActiveSessionDashboard({
               "leaderboard-player",
               bill.isPresent ? "" : "not-present",
               isCurrentPlayer ? "current-player" : "",
+              expandedPlayerId === bill.user.id ? "is-expanded" : "",
               isPendingRemoval ? "pending-removal" : "",
               isCollapsingRemoval ? "collapsing-removal" : "",
             ].filter(Boolean).join(" ")}
@@ -1403,6 +1426,7 @@ function PlayerMatchHistory({
             isCurrentPlayerHost={isCurrentPlayerHost}
             isOpponentHost={isOpponentHost}
             isHighlighted={isHighlighted}
+            showSessionName={false}
             id={`match-history-${match.id}`}
             key={match.id}
           />
