@@ -867,7 +867,7 @@ function ActiveSessionDashboard({
           <div className="share-card-main">
             <p className="eyebrow">Share session</p>
             <div className="share-card-title">
-              <h3>Player join link</h3>
+              <h3>Invite Players</h3>
               {session.pinCode ? (
                 <div className="pin-copy-wrap">
                   {isPinCopyTipVisible ? <div className="copy-tooltip">Copied PIN</div> : null}
