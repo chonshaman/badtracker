@@ -1500,6 +1500,13 @@ label {
   white-space: nowrap;
 }
 
+.session-entry-info.unavailable p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .syncing-state {
   position: relative;
 }

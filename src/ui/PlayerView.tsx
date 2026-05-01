@@ -728,13 +728,24 @@ function SessionPinGate({ sessionId, session, store }: { sessionId: string; sess
       <button type="submit" className="primary-button" disabled={pinCode.length !== 4 || isVerifying}>
         {isVerifying ? "Verifying..." : "Continue"}
       </button>
-      <SessionEntryInfo info={publicInfo} />
+      <SessionEntryInfo info={publicInfo} showUnavailableHint={store.isRemoteEnabled} />
     </form>
   );
 }
 
-function SessionEntryInfo({ info }: { info?: SessionPublicInfo }) {
-  if (!info?.sessionName && !info?.sessionDate && !info?.hostName) return null;
+function SessionEntryInfo({ info, showUnavailableHint = false }: { info?: SessionPublicInfo; showUnavailableHint?: boolean }) {
+  if (!info?.sessionName && !info?.sessionDate && !info?.hostName) {
+    if (!showUnavailableHint) return null;
+    return (
+      <div className="session-entry-info unavailable">
+        <div>
+          <span>Session</span>
+          <strong>Info unavailable</strong>
+        </div>
+        <p>Run the latest Supabase schema so shared links can show session and host before PIN entry.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="session-entry-info">
