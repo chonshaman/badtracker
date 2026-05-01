@@ -55,3 +55,111 @@ describe("playerBills identity handling", () => {
     );
   });
 });
+
+describe("playerBills stake billing", () => {
+  it("charges the lower-score player for both shuttle shares when loser pays all is enabled", () => {
+    const users = [
+      { id: "u-winner", name: "Winner", role: "Player", type: "Regular" },
+      { id: "u-loser", name: "Loser", role: "Player", type: "Regular" },
+    ];
+    const roster = users.map((user) => ({
+      sessionId: session.id,
+      userId: user.id,
+      paid: false,
+      isPresent: true,
+      isHost: false,
+    }));
+    const matches = [
+      {
+        id: "match-stake",
+        sessionId: session.id,
+        createdAt: "2026-05-01T10:05:00.000Z",
+        playerAId: "u-winner",
+        playerBId: "u-loser",
+        score: "21-19",
+        isStake: true,
+        winnerId: "u-winner",
+        status: "Valid",
+      },
+    ];
+
+    const bills = playerBills({ session, users, roster, matches });
+    const winnerBill = bills.find((bill) => bill.user.id === "u-winner");
+    const loserBill = bills.find((bill) => bill.user.id === "u-loser");
+
+    assert.equal(winnerBill?.courtShare, 60000);
+    assert.equal(winnerBill?.shuttleFee, 0);
+    assert.equal(winnerBill?.totalDue, 60000);
+    assert.equal(loserBill?.courtShare, 60000);
+    assert.equal(loserBill?.shuttleFee, 20000);
+    assert.equal(loserBill?.totalDue, 80000);
+  });
+
+  it("infers the stake winner from score when older match data is missing winnerId", () => {
+    const users = [
+      { id: "u-player", name: "Player", role: "Player", type: "Regular" },
+      { id: "u-opponent", name: "Opponent", role: "Player", type: "Regular" },
+    ];
+    const roster = users.map((user) => ({
+      sessionId: session.id,
+      userId: user.id,
+      paid: false,
+      isPresent: true,
+      isHost: false,
+    }));
+    const matches = [
+      {
+        id: "match-stake-fallback",
+        sessionId: session.id,
+        createdAt: "2026-05-01T10:05:00.000Z",
+        playerAId: "u-player",
+        playerBId: "u-opponent",
+        score: "17-21",
+        isStake: true,
+        status: "Valid",
+      },
+    ];
+
+    const bills = playerBills({ session, users, roster, matches });
+    const playerBill = bills.find((bill) => bill.user.id === "u-player");
+    const opponentBill = bills.find((bill) => bill.user.id === "u-opponent");
+
+    assert.equal(playerBill?.shuttleFee, 20000);
+    assert.equal(opponentBill?.shuttleFee, 0);
+  });
+
+  it("applies loser pays all to casual pooled billing", () => {
+    const casualSession = { ...session, billingMethod: "casual" };
+    const users = [
+      { id: "u-winner", name: "Winner", role: "Player", type: "Regular" },
+      { id: "u-loser", name: "Loser", role: "Player", type: "Regular" },
+    ];
+    const roster = users.map((user) => ({
+      sessionId: casualSession.id,
+      userId: user.id,
+      paid: false,
+      isPresent: true,
+      isHost: false,
+    }));
+    const matches = [
+      {
+        id: "match-casual-stake",
+        sessionId: casualSession.id,
+        createdAt: "2026-05-01T10:05:00.000Z",
+        playerAId: "u-winner",
+        playerBId: "u-loser",
+        score: "21-19",
+        isStake: true,
+        winnerId: "u-winner",
+        status: "Valid",
+      },
+    ];
+
+    const bills = playerBills({ session: casualSession, users, roster, matches });
+    const winnerBill = bills.find((bill) => bill.user.id === "u-winner");
+    const loserBill = bills.find((bill) => bill.user.id === "u-loser");
+
+    assert.equal(winnerBill?.totalDue, 0);
+    assert.equal(loserBill?.totalDue, 140000);
+  });
+});

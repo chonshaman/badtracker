@@ -15,14 +15,14 @@ function matchParticipantCount() {
 
 function sessionMatches(
   session: Session,
-  matches: { playerAId: string; playerBId: string; sessionId: string; isStake?: boolean; winnerId?: string }[],
+  matches: { playerAId: string; playerBId: string; sessionId: string; score?: string; isStake?: boolean; winnerId?: string }[],
 ) {
   return matches.filter((match) => match.sessionId === session.id);
 }
 
 export function casualUnitPrice(
   session: Session,
-  matches: { playerAId: string; playerBId: string; sessionId: string; isStake?: boolean; winnerId?: string }[],
+  matches: { playerAId: string; playerBId: string; sessionId: string; score?: string; isStake?: boolean; winnerId?: string }[],
 ): number {
   const loggedMatches = sessionMatches(session, matches);
   const totalIndividualPlays = loggedMatches.reduce((total) => total + matchParticipantCount(), 0);
@@ -33,7 +33,7 @@ export function casualUnitPrice(
 
 function playerShuttleShareForMatch(
   session: Session,
-  match: { playerAId: string; playerBId: string; isStake?: boolean; winnerId?: string },
+  match: { playerAId: string; playerBId: string; score?: string; isStake?: boolean; winnerId?: string },
   userIds: string[],
 ): number {
   const isPlayerInMatch = userIds.includes(match.playerAId) || userIds.includes(match.playerBId);
@@ -43,7 +43,23 @@ function playerShuttleShareForMatch(
   const participantCount = 2;
   if (!match.isStake) return matchShuttleCost / participantCount;
 
-  return match.winnerId && userIds.includes(match.winnerId) ? 0 : matchShuttleCost;
+  const winnerId = match.winnerId ?? inferWinnerIdFromScore(match);
+  if (!winnerId) return matchShuttleCost / participantCount;
+  return userIds.includes(winnerId) ? 0 : matchShuttleCost;
+}
+
+function playerCasualShareForMatch(
+  unitPrice: number,
+  match: { playerAId: string; playerBId: string; score?: string; isStake?: boolean; winnerId?: string },
+  userIds: string[],
+): number {
+  const isPlayerInMatch = userIds.includes(match.playerAId) || userIds.includes(match.playerBId);
+  if (!isPlayerInMatch) return 0;
+  if (!match.isStake) return unitPrice;
+
+  const winnerId = match.winnerId ?? inferWinnerIdFromScore(match);
+  if (!winnerId) return unitPrice;
+  return userIds.includes(winnerId) ? 0 : unitPrice * matchParticipantCount();
 }
 
 export function activeRosterCount(roster: RosterEntry[], sessionId: string): number {
@@ -59,7 +75,7 @@ export function playerBills(args: {
   session: Session;
   users: User[];
   roster: RosterEntry[];
-  matches: { playerAId: string; playerBId: string; sessionId: string; isStake?: boolean; winnerId?: string }[];
+  matches: { playerAId: string; playerBId: string; sessionId: string; score?: string; isStake?: boolean; winnerId?: string }[];
 }): PlayerBill[] {
   const groupedEntries = new Map<string, { user: User; entries: RosterEntry[]; userIds: string[] }>();
   const loggedMatches = sessionMatches(args.session, args.matches);
@@ -89,7 +105,7 @@ export function playerBills(args: {
       ).length;
       const isPresent = entries.some((entry) => entry.isPresent);
       const courtShare = isCasualBilling
-        ? matchesPlayed * casualSharePerPlay
+        ? loggedMatches.reduce((total, match) => total + playerCasualShareForMatch(casualSharePerPlay, match, uniqueUserIds), 0)
         : isPresent
           ? courtSharePerPlayer(args.session, args.roster)
           : 0;
@@ -114,4 +130,13 @@ export function playerBills(args: {
       };
     })
     .sort((a, b) => b.matchesPlayed - a.matchesPlayed || a.user.name.localeCompare(b.user.name));
+}
+
+function inferWinnerIdFromScore(match: { playerAId: string; playerBId: string; score?: string }): string | undefined {
+  if (!match.score) return undefined;
+  const [firstScore, secondScore] = match.score.split(/[-:]/).map((value) => Number(value.trim()));
+  if (!Number.isFinite(firstScore) || !Number.isFinite(secondScore) || firstScore === secondScore) {
+    return undefined;
+  }
+  return firstScore > secondScore ? match.playerAId : match.playerBId;
 }
