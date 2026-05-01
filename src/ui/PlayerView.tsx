@@ -1,11 +1,12 @@
-import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { formatVnd } from "../lib/money";
+import { formatScorePart, hasRecordedScore } from "../lib/scoreFlow";
 import { casualUnitPrice, playerBills, shuttleFeePerMatch } from "../lib/sessionMath";
 import type { Match, Session, SessionPublicInfo, TrackerState, User } from "../types";
-import { Check, ChevronDown, ChevronRight, Plus, ShuttleIcon, ToggleLeft, ToggleRight, X } from "./icons";
+import { Check, ChevronDown, ChevronRight, Plus, ShuttleIcon } from "./icons";
 import { MatchSummaryCard } from "./MatchSummaryCard";
+import { EditScoreModal, RecordMatchModal } from "./player/MatchModals";
 
 type Store = ReturnType<typeof import("../lib/store").useTrackerStore>;
 
@@ -22,6 +23,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
   const playerStorageKey = sessionForPlayer ? `smash-player-${sessionForPlayer.id}` : `smash-player-${slug}`;
   const [playerId, setPlayerId] = useState(() => sessionStorage.getItem(playerStorageKey) ?? "");
   const [selectedOpponentId, setSelectedOpponentId] = useState<string | null>(null);
+  const [editingScoreMatchId, setEditingScoreMatchId] = useState<string | null>(null);
   const [guestName, setGuestName] = useState("");
   const [selectedHomeSessionId, setSelectedHomeSessionId] = useState("");
   const [sessionLinkStatus, setSessionLinkStatus] = useState<"checking" | "active" | "closed" | "missing" | "unknown">(
@@ -127,7 +129,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
   const rosterIds = store.state.roster
     .filter((entry) => entry.sessionId === activeSession.id)
     .map((entry) => entry.userId);
-  const roster = uniqueUsersByName(store.state.users.filter((user) => rosterIds.includes(user.id)));
+  const roster = usersForRosterIds(store.state.users, rosterIds);
   const currentUser = roster.find((user) => user.id === playerId);
 
   if (rosterIds.length > 0 && roster.length === 0) {
@@ -211,9 +213,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
     .filter((entry) => entry.sessionId === activeSession.id && entry.isPresent)
     .map((entry) => entry.userId);
   const opponents = roster.filter((user) => user.id !== currentUser.id && activeRosterIds.includes(user.id));
-  const currentUserIds = store.state.users
-    .filter((user) => user.name.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
-    .map((user) => user.id);
+  const currentUserIds = [currentUser.id];
   const joinedSessions = store.state.sessions
     .filter((session) =>
       store.state.roster.some(
@@ -295,6 +295,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
               users={store.state.users}
               roster={store.state.roster}
               backTo={playerReturnPath}
+              onAddScore={() => setEditingScoreMatchId(match.id)}
             />
           ))
         )}
@@ -330,6 +331,19 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
           }}
         />
       )}
+
+      {editingScoreMatchId ? (
+        <EditScoreModal
+          match={myMatches.find((match) => match.id === editingScoreMatchId)}
+          currentUser={currentUser}
+          users={store.state.users}
+          onClose={() => setEditingScoreMatchId(null)}
+          onSubmit={(score) => {
+            store.updateMatchScore(editingScoreMatchId, score);
+            setEditingScoreMatchId(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -369,7 +383,7 @@ function ClosedSessionSummary({
   const rosterIds = store.state.roster
     .filter((entry) => entry.sessionId === session.id)
     .map((entry) => entry.userId);
-  const roster = uniqueUsersByName(store.state.users.filter((user) => rosterIds.includes(user.id)));
+  const roster = usersForRosterIds(store.state.users, rosterIds);
   const currentUser = roster.find((user) => user.id === playerId);
   const bill = currentUser
     ? playerBills({
@@ -584,177 +598,6 @@ function PreviousSessions({
         );
       })}
     </section>
-  );
-}
-
-function RecordMatchModal({
-  currentUser,
-  opponents,
-  initialOpponentId,
-  onClose,
-  onSubmit,
-}: {
-  currentUser: User;
-  opponents: User[];
-  initialOpponentId: string;
-  onClose: () => void;
-  onSubmit: (opponentId: string, score: string | undefined, isStake: boolean, winnerId?: string) => void;
-}) {
-  const [opponentId, setOpponentId] = useState(initialOpponentId);
-  const [score, setScore] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isOpponentListOpen, setIsOpponentListOpen] = useState(false);
-  const [isStake, setIsStake] = useState(false);
-  const submitLock = useRef(false);
-  const opponentDropdownRef = useRef<HTMLDivElement>(null);
-  const scoreInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!isOpponentListOpen) return;
-
-    function handlePointerDown(event: PointerEvent) {
-      if (!opponentDropdownRef.current?.contains(event.target as Node)) {
-        setIsOpponentListOpen(false);
-      }
-    }
-
-    window.addEventListener("pointerdown", handlePointerDown);
-    return () => window.removeEventListener("pointerdown", handlePointerDown);
-  }, [isOpponentListOpen]);
-
-  useEffect(() => {
-    scoreInputRef.current?.focus();
-  }, []);
-
-  function handleSubmit() {
-    if (!opponentId || submitLock.current) return;
-    if (isStake && !inferredWinnerId) return;
-    submitLock.current = true;
-    setIsSubmitting(true);
-    onSubmit(opponentId, normalizeScore(score), isStake, isStake ? inferredWinnerId : undefined);
-  }
-
-  function updateScore(value: string) {
-    setScore(formatScoreInput(value));
-  }
-
-  const selectedOpponent = opponents.find((opponent) => opponent.id === opponentId);
-  const scoreResult = readScoreResult(score);
-  const inferredWinnerId = scoreResult
-    ? scoreResult.playerWon
-      ? currentUser.id
-      : selectedOpponent?.id
-    : undefined;
-  const stakeCaption = scoreResult ? (
-    scoreResult.playerWon ? (
-      <>
-        {scoreResult.formattedScore}:{" "}
-        <span className="stake-caption-win">{currentUser.name} (You) wins</span>
-        {", "}
-        <span className="stake-caption-loss">{selectedOpponent?.name ?? "Opponent"} loses.</span>
-      </>
-    ) : (
-      <>
-        {scoreResult.formattedScore}:{" "}
-        <span className="stake-caption-loss">{currentUser.name} (You) loses</span>
-        {", "}
-        <span className="stake-caption-win">{selectedOpponent?.name ?? "Opponent"} wins.</span>
-      </>
-    )
-  ) : null;
-
-  return createPortal(
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Record match">
-      <form
-        className="match-modal"
-        onSubmit={(event) => {
-          event.preventDefault();
-          handleSubmit();
-        }}
-      >
-        <button type="button" className="close-button" onClick={onClose} aria-label="Close">
-          <X size={22} />
-        </button>
-        <p className="eyebrow">New match</p>
-        <h2>{currentUser.name} vs {selectedOpponent?.name}</h2>
-        <div className="custom-select" ref={opponentDropdownRef}>
-          <button
-            type="button"
-            className="custom-select-trigger"
-            aria-haspopup="listbox"
-            aria-expanded={isOpponentListOpen}
-            onClick={() => setIsOpponentListOpen((current) => !current)}
-          >
-            <span>{selectedOpponent?.name ?? "Select opponent"}</span>
-            <ChevronDown size={18} />
-          </button>
-          {isOpponentListOpen ? (
-            <div className="custom-select-menu" role="listbox" aria-label="Opponent">
-              {opponents.map((opponent) => {
-                const isSelected = opponent.id === opponentId;
-                return (
-                  <button
-                    type="button"
-                    className={isSelected ? "custom-select-option selected" : "custom-select-option"}
-                    key={opponent.id}
-                    role="option"
-                    aria-selected={isSelected}
-                    onClick={() => {
-                      setOpponentId(opponent.id);
-                      setIsOpponentListOpen(false);
-                    }}
-                  >
-                    <span>{opponent.name}</span>
-                    {isSelected ? <Check size={17} /> : null}
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
-        <label>
-          Score
-          <input
-            ref={scoreInputRef}
-            inputMode="numeric"
-            placeholder="21-19"
-            value={score}
-            onChange={(event) => updateScore(event.target.value)}
-          />
-        </label>
-        <button
-          type="button"
-          className="stake-control"
-          aria-pressed={isStake}
-          onClick={() => setIsStake((current) => !current)}
-        >
-          <div className="stake-control-copy">
-            <span>Loser pay all (2 chai)</span>
-            <p
-              className={[
-                "stake-caption",
-                stakeCaption ? "visible" : "",
-              ].filter(Boolean).join(" ")}
-              aria-live="polite"
-            >
-              {stakeCaption || "Score decides who pays."}
-            </p>
-          </div>
-          <span className="stake-icon-toggle" aria-hidden="true">
-            {isStake ? <ToggleRight size={34} /> : <ToggleLeft size={34} />}
-          </span>
-        </button>
-        {isStake && !scoreResult ? (
-          <p className="stake-warning">
-            Enter a score first. Example: 2119 means {currentUser.name} wins, 1721 means {currentUser.name} loses.
-          </p>
-        ) : null}
-        <button type="submit" className="primary-button" disabled={!opponentId || isSubmitting || (isStake && !scoreResult)}>
-          {isSubmitting ? "Submitting..." : "Submit"}
-        </button>
-      </form>
-    </div>,
-    document.body,
   );
 }
 
@@ -975,6 +818,7 @@ function MatchCard({
   users,
   roster,
   backTo,
+  onAddScore,
 }: {
   match: Match;
   number: number;
@@ -983,6 +827,7 @@ function MatchCard({
   users: User[];
   roster: { sessionId: string; userId: string; isHost?: boolean }[];
   backTo: string;
+  onAddScore: () => void;
 }) {
   const opponentId = match.playerAId === currentUser.id ? match.playerBId : match.playerAId;
   const opponent = users.find((user) => user.id === opponentId)?.name ?? "Unknown";
@@ -1000,6 +845,7 @@ function MatchCard({
       isOpponentHost={isOpponentHost}
       to={`/${session.slug}/admin/${session.id}`}
       state={{ backTo, playerId: currentUser.id, highlightMatchId: match.id }}
+      onAddScore={!hasRecordedScore(match.score) ? onAddScore : undefined}
     />
   );
 }
@@ -1052,36 +898,8 @@ function sessionTitle(session: Session): string {
   return session.name?.trim() || session.date;
 }
 
-function matchScoreParts(score: string | undefined, isCurrentPlayerA: boolean): { current: string; opponent: string } {
-  if (!score) return { current: "-", opponent: "-" };
-  const [firstScore, secondScore] = score.split(/[-:]/).map((value) => value.trim());
-  if (!firstScore || !secondScore) return { current: "-", opponent: "-" };
-  return isCurrentPlayerA
-    ? { current: firstScore, opponent: secondScore }
-    : { current: secondScore, opponent: firstScore };
-}
-
 function playerFeeLabel(session: Session): string {
   return session.billingMethod === "casual" ? "Match Price" : "Court share";
-}
-
-function normalizeScore(score: string): string | undefined {
-  const trimmed = score.trim();
-  return trimmed ? trimmed.replace(/\s+/g, "") : undefined;
-}
-
-function formatScoreInput(value: string): string {
-  const digits = value.replace(/\D/g, "").slice(0, 4);
-  if (digits.length <= 2) return digits;
-
-  if (digits.length === 3) {
-    const firstTwo = Number(digits.slice(0, 2));
-    return firstTwo >= 21 && firstTwo <= 32
-      ? `${digits.slice(0, 2)}-${digits.slice(2)}`
-      : `${digits.slice(0, 1)}-${digits.slice(1)}`;
-  }
-
-  return `${digits.slice(0, 2)}-${digits.slice(2)}`;
 }
 
 function isSessionHost(roster: { sessionId: string; userId: string; isHost?: boolean }[], sessionId: string, userId: string): boolean {
@@ -1101,20 +919,6 @@ function sessionEntryInfo(session: Session, state: TrackerState): SessionPublicI
   };
 }
 
-function readScoreResult(score: string): { formattedScore: string; playerWon: boolean } | null {
-  const digits = score.replace(/\D/g, "");
-  if (digits.length !== 4) return null;
-
-  const playerScore = Number(digits.slice(0, 2));
-  const opponentScore = Number(digits.slice(2));
-  if (!Number.isFinite(playerScore) || !Number.isFinite(opponentScore) || playerScore === opponentScore) return null;
-
-  return {
-    formattedScore: `${digits.slice(0, 2)}-${digits.slice(2)}`,
-    playerWon: playerScore > opponentScore,
-  };
-}
-
 function syncErrorGuidance(error: string): string {
   const normalized = error.toLowerCase();
   if (normalized.includes("rate limit")) {
@@ -1126,12 +930,9 @@ function syncErrorGuidance(error: string): string {
   return "If this persists, run the latest supabase-schema.sql in your Supabase project, then refresh.";
 }
 
-function uniqueUsersByName(users: User[]): User[] {
-  const seenNames = new Set<string>();
-  return users.filter((user) => {
-    const key = user.name.trim().toLowerCase();
-    if (seenNames.has(key)) return false;
-    seenNames.add(key);
-    return true;
-  });
+function usersForRosterIds(users: User[], rosterIds: string[]): User[] {
+  return rosterIds
+    .map((userId) => users.find((user) => user.id === userId))
+    .filter((user): user is User => Boolean(user));
 }
+

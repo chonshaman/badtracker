@@ -4,18 +4,17 @@ import { useNavigate } from "react-router-dom";
 import { presets } from "../data/defaults";
 import { formatVnd, parseMoneyInput } from "../lib/money";
 import type { DeletedSessionSnapshot } from "../lib/store";
-import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Download, Info, Plus, RefreshIcon, ShuttleIcon, Trash2, X } from "./icons";
-import { MatchSummaryCard } from "./MatchSummaryCard";
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Download, Info, Plus, ShuttleIcon, Trash2, X } from "./icons";
 import {
   activeRosterCount,
-  calculateFee,
-  casualUnitPrice,
   courtSharePerPlayer,
-  maxMatches,
   playerBills,
   shuttleFeePerMatch,
 } from "../lib/sessionMath";
 import type { BillingMethod, Match, RosterEntry, Session, TrackerState, User } from "../types";
+import { BillingStats } from "./admin/BillingStats";
+import { ParticipantPanel } from "./admin/ParticipantPanel";
+import { SessionInviteCard } from "./admin/SessionInviteCard";
 
 type Store = ReturnType<typeof import("../lib/store").useTrackerStore>;
 
@@ -35,7 +34,6 @@ type SetupDraft = {
   shuttlesPerTube: number;
   matchDuration: number;
   totalCourtTime: number;
-  feePerPerson: number;
   billingMethod: BillingMethod;
 };
 
@@ -330,12 +328,8 @@ function SessionSetup({
   const [setupError, setSetupError] = useState("");
   const guestAddLock = useRef(false);
   const skipRosterPrefsWrite = useRef(true);
-  const [draft, setDraft] = useState<SetupDraft>(() => {
-    const feePerPerson = calculateFee(initialPreset);
-    return { ...initialPreset, feePerPerson, billingMethod: "standard" };
-  });
+  const [draft, setDraft] = useState<SetupDraft>(() => ({ ...initialPreset, billingMethod: "standard" }));
 
-  const computedFee = calculateFee(draft);
   const setupUsers = uniqueUsersByName([...setupMockUsers, ...setupAddedUsers]);
   const setupPlayers = setupUsers.filter(
     (user) => !hiddenUserIds.includes(user.id) && !isHostPlaceholderUser(user),
@@ -360,11 +354,11 @@ function SessionSetup({
   function applyPreset(presetId: string) {
     const preset = presets.find((item) => item.id === presetId) ?? initialPreset;
     setSelectedPreset(preset.id);
-    setDraft((current) => ({ ...preset, feePerPerson: calculateFee(preset), billingMethod: current.billingMethod }));
+    setDraft((current) => ({ ...preset, billingMethod: current.billingMethod }));
   }
 
   function updateNumber(field: keyof SetupDraft, value: string) {
-    const numeric = field.includes("Price") || field === "feePerPerson" ? parseMoneyInput(value) : Number(value);
+    const numeric = field.includes("Price") ? parseMoneyInput(value) : Number(value);
     setDraft((current) => ({ ...current, [field]: Number.isFinite(numeric) ? numeric : 0 }));
   }
 
@@ -434,7 +428,6 @@ function SessionSetup({
       shuttlesPerTube: draft.shuttlesPerTube,
       matchDuration: draft.matchDuration,
       totalCourtTime: draft.totalCourtTime,
-      feePerPerson: draft.feePerPerson || computedFee,
       billingMethod: draft.billingMethod,
       status: "Active",
       createdAt: new Date().toISOString(),
@@ -492,7 +485,6 @@ function SessionSetup({
           <NumberField label="Shuttles per tube" value={draft.shuttlesPerTube} onChange={(value) => updateNumber("shuttlesPerTube", value)} />
           <NumberField label="Match duration" suffix="min" value={draft.matchDuration} onChange={(value) => updateNumber("matchDuration", value)} />
           <NumberField label="Total court time" suffix="min" value={draft.totalCourtTime} onChange={(value) => updateNumber("totalCourtTime", value)} />
-          <MoneyField label="Fee per person override" value={draft.feePerPerson} onChange={(value) => updateNumber("feePerPerson", value)} />
           <label className="full-span">
             Billing method
             <BillingMethodDropdown
@@ -503,10 +495,6 @@ function SessionSetup({
           <div className="billing-method-note full-span">
             <Info size={16} />
             <span>Standard splits court by present players and shuttle by each match. Casual pools all costs by matches played.</span>
-          </div>
-          <div className="formula-card">
-            <strong>{formatVnd(computedFee)}</strong>
-            <span>Calculated fee per person per match</span>
           </div>
         </div>
       )}
@@ -596,7 +584,7 @@ function SessionSetup({
       {step === 3 && (
         <div className="launch-card">
           <p>{uniqueUserIdsByName(selectedUsers, setupUsers).length} players selected</p>
-          <strong>{formatVnd(draft.feePerPerson || computedFee)} per person / match</strong>
+          <strong>{formatVnd(draft.courtPrice)} total court money</strong>
           <span>
             Max matches: {Math.floor(draft.totalCourtTime / draft.matchDuration)} from{" "}
             {draft.totalCourtTime} court-minutes.
@@ -644,210 +632,24 @@ function ActiveSessionDashboard({
   highlightMatchId?: string;
 }) {
   const isHost = role === "host";
-  const shareLink = `${window.location.origin}/${session.slug}/session/${session.id}`;
-  const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
-  const [isCopyTipVisible, setIsCopyTipVisible] = useState(false);
-  const [isPinCopyTipVisible, setIsPinCopyTipVisible] = useState(false);
-  const [isCourtPriceEditing, setIsCourtPriceEditing] = useState(false);
-  const [courtPriceDraft, setCourtPriceDraft] = useState(() => formatVnd(session.courtPrice));
-  const [isMatchDurationEditing, setIsMatchDurationEditing] = useState(false);
-  const [matchDurationDraft, setMatchDurationDraft] = useState(() => String(session.matchDuration));
-  const [isTotalCourtTimeEditing, setIsTotalCourtTimeEditing] = useState(false);
-  const [totalCourtTimeDraft, setTotalCourtTimeDraft] = useState(() => String(session.totalCourtTime));
-  const [isTotalMatchesEditing, setIsTotalMatchesEditing] = useState(false);
-  const [totalMatchesDraft, setTotalMatchesDraft] = useState(() => formatStatNumber(maxMatches(session)));
   const [isEndConfirmOpen, setIsEndConfirmOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-  const [participantName, setParticipantName] = useState("");
-  const [isParticipantRefreshCoolingDown, setIsParticipantRefreshCoolingDown] = useState(false);
-  const [pendingRemovedPlayerIds, setPendingRemovedPlayerIds] = useState<string[]>([]);
-  const [collapsingRemovedPlayerIds, setCollapsingRemovedPlayerIds] = useState<string[]>([]);
-  const removePlayerTimersRef = useRef<Record<string, number>>({});
-  const collapsePlayerTimersRef = useRef<Record<string, number>>({});
-  const autoExpandedPlayerRef = useRef<string | undefined>(undefined);
   const bills = playerBills({
     session,
     users: store.state.users,
     roster: store.state.roster,
     matches: store.state.matches,
   });
-  const activeCount = activeRosterCount(store.state.roster, session.id);
-  const courtShare = courtSharePerPlayer(session, store.state.roster);
-  const fixedPricePerMatch = casualUnitPrice(session, store.state.matches);
-  const shuttleFee = shuttleFeePerMatch(session);
   const sessionMatches = store.state.matches
     .filter((match) => match.sessionId === session.id)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const duplicateRosterNames = duplicateSessionRosterNames(session.id, store.state);
   const totalDue = bills.reduce((sum, bill) => sum + bill.totalDue, 0);
   const collected = bills.filter((bill) => bill.paid).reduce((sum, bill) => sum + bill.totalDue, 0);
-  const sessionCost = session.courtPrice + (sessionMatches.length * session.shuttlePrice) / session.shuttlesPerTube;
-
-  async function copyShareText() {
-    await navigator.clipboard.writeText(shareLink);
-    setIsCopyTipVisible(true);
-    window.setTimeout(() => setIsCopyTipVisible(false), 1800);
-  }
-
-  async function copyPinCode() {
-    if (!session.pinCode) return;
-    await navigator.clipboard.writeText(session.pinCode);
-    setIsPinCopyTipVisible(true);
-    window.setTimeout(() => setIsPinCopyTipVisible(false), 1800);
-  }
-
-  useEffect(() => {
-    if (!isCourtPriceEditing) setCourtPriceDraft(formatVnd(session.courtPrice));
-  }, [isCourtPriceEditing, session.courtPrice]);
-
-  useEffect(() => {
-    if (!isMatchDurationEditing) setMatchDurationDraft(String(session.matchDuration));
-  }, [isMatchDurationEditing, session.matchDuration]);
-
-  useEffect(() => {
-    if (!isTotalCourtTimeEditing) setTotalCourtTimeDraft(String(session.totalCourtTime));
-  }, [isTotalCourtTimeEditing, session.totalCourtTime]);
-
-  useEffect(() => {
-    if (!isTotalMatchesEditing) setTotalMatchesDraft(formatStatNumber(maxMatches(session)));
-  }, [isTotalMatchesEditing, session]);
-
-  useEffect(
-    () => () => {
-      Object.values(removePlayerTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
-      Object.values(collapsePlayerTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
-    },
-    [],
-  );
-
-  useEffect(() => {
-    if (!currentPlayerId) return;
-    if (autoExpandedPlayerRef.current === currentPlayerId) return;
-    const currentBill = bills.find((bill) => bill.userIds.includes(currentPlayerId));
-    if (currentBill) {
-      setExpandedPlayerId(currentBill.user.id);
-      autoExpandedPlayerRef.current = currentPlayerId;
-    }
-  }, [currentPlayerId, bills]);
-
-  useEffect(() => {
-    if (!highlightMatchId) return;
-    const timeoutId = window.setTimeout(() => {
-      document.getElementById(`match-history-${highlightMatchId}`)?.scrollIntoView({
-        block: "center",
-        behavior: "smooth",
-      });
-    }, 180);
-    return () => window.clearTimeout(timeoutId);
-  }, [highlightMatchId, expandedPlayerId]);
-
-  function submitCourtPrice() {
-    const nextCourtPrice = parseCourtMoneyInput(courtPriceDraft);
-    if (nextCourtPrice <= 0) {
-      setCourtPriceDraft(formatVnd(session.courtPrice));
-      setIsCourtPriceEditing(false);
-      return;
-    }
-    store.updateCourtPrice(session.id, nextCourtPrice);
-    setCourtPriceDraft(formatVnd(nextCourtPrice));
-    setIsCourtPriceEditing(false);
-  }
-
-  function submitMatchDuration() {
-    const nextMatchDuration = Number(matchDurationDraft);
-    if (!Number.isFinite(nextMatchDuration) || nextMatchDuration <= 0) {
-      setMatchDurationDraft(String(session.matchDuration));
-      setIsMatchDurationEditing(false);
-      return;
-    }
-    store.updateMatchDuration(session.id, nextMatchDuration);
-    setMatchDurationDraft(String(nextMatchDuration));
-    setIsMatchDurationEditing(false);
-  }
-
-  function submitTotalCourtTime() {
-    const nextTotalCourtTime = Number(totalCourtTimeDraft);
-    if (!Number.isFinite(nextTotalCourtTime) || nextTotalCourtTime <= 0) {
-      setTotalCourtTimeDraft(String(session.totalCourtTime));
-      setIsTotalCourtTimeEditing(false);
-      return;
-    }
-    store.updateTotalCourtTime(session.id, nextTotalCourtTime);
-    setTotalCourtTimeDraft(String(nextTotalCourtTime));
-    setIsTotalCourtTimeEditing(false);
-  }
-
-  function submitTotalMatches() {
-    const nextTotalMatches = Number(totalMatchesDraft);
-    if (!Number.isFinite(nextTotalMatches) || nextTotalMatches <= 0) {
-      setTotalMatchesDraft(formatStatNumber(maxMatches(session)));
-      setIsTotalMatchesEditing(false);
-      return;
-    }
-    const nextMatchDuration = Number((session.totalCourtTime / nextTotalMatches).toFixed(2));
-    store.updateMatchDuration(session.id, nextMatchDuration);
-    setTotalMatchesDraft(formatStatNumber(nextTotalMatches));
-    setIsTotalMatchesEditing(false);
-  }
-
-  function addParticipant() {
-    const trimmed = participantName.trim();
-    if (!trimmed) return;
-    const existingUser = store.state.users.find(
-      (user) => user.name.trim().toLowerCase() === trimmed.toLowerCase(),
-    );
-    const user: User = existingUser ?? {
-      id: `u-${crypto.randomUUID()}`,
-      name: trimmed,
-      role: "Player",
-      type: "Temp",
-    };
-    store.joinSessionGuest(user, session.id);
-    setParticipantName("");
-  }
-
-  async function refreshParticipants() {
-    if (!store.isRemoteEnabled || store.isSyncing || isParticipantRefreshCoolingDown) return;
-    setIsParticipantRefreshCoolingDown(true);
-    await store.refreshRemoteNow();
-    window.setTimeout(() => setIsParticipantRefreshCoolingDown(false), 3500);
-  }
-
-  function scheduleRemovePlayer(userId: string) {
-    const bill = bills.find((candidate) => candidate.user.id === userId);
-    if (bill?.isHost || pendingRemovedPlayerIds.includes(userId)) return;
-    if (pendingRemovedPlayerIds.includes(userId)) return;
-    setPendingRemovedPlayerIds((current) => [...current, userId]);
-    removePlayerTimersRef.current[userId] = window.setTimeout(() => {
-      delete removePlayerTimersRef.current[userId];
-      setCollapsingRemovedPlayerIds((current) => [...current, userId]);
-      collapsePlayerTimersRef.current[userId] = window.setTimeout(() => {
-        store.removeSessionPlayer(session.id, userId);
-        setPendingRemovedPlayerIds((current) => current.filter((id) => id !== userId));
-        setCollapsingRemovedPlayerIds((current) => current.filter((id) => id !== userId));
-        delete collapsePlayerTimersRef.current[userId];
-      }, 240);
-    }, 5000);
-  }
-
-  function undoRemovePlayer(userId: string) {
-    const timerId = removePlayerTimersRef.current[userId];
-    if (timerId) window.clearTimeout(timerId);
-    const collapseTimerId = collapsePlayerTimersRef.current[userId];
-    if (collapseTimerId) window.clearTimeout(collapseTimerId);
-    delete removePlayerTimersRef.current[userId];
-    delete collapsePlayerTimersRef.current[userId];
-    setPendingRemovedPlayerIds((current) => current.filter((id) => id !== userId));
-    setCollapsingRemovedPlayerIds((current) => current.filter((id) => id !== userId));
-  }
 
   return (
     <section className="panel report-detail-panel">
       <div className="section-header">
         <div>
-          <p className="eyebrow">
-            {session.status} session since {formatTime(session.createdAt)}
-          </p>
           <h2 className="session-name-with-icon">
             <ShuttleIcon className="shuttle-icon" size={20} />
             <span>{sessionTitle(session)}</span>
@@ -862,257 +664,31 @@ function ActiveSessionDashboard({
         </div>
       </div>
 
-      {session.status === "Active" ? (
-        <div className="share-card">
-          <div className="share-card-main">
-            <p className="eyebrow">Share session</p>
-            <div className="share-card-title">
-              <h3>Invite Players</h3>
-              {session.pinCode ? (
-                <div className="pin-copy-wrap">
-                  {isPinCopyTipVisible ? <div className="copy-tooltip">Copied PIN</div> : null}
-                  <div className="pin-chip">PIN {session.pinCode}</div>
-                  <button type="button" className="pin-copy-button" onClick={copyPinCode} aria-label="Copy PIN code">
-                    <Copy size={15} />
-                  </button>
-                </div>
-              ) : null}
-            </div>
-            <p>{shareLink}</p>
-            <div className="copy-action">
-              {isCopyTipVisible ? <div className="copy-tooltip">Copied link</div> : null}
-              <button className="secondary-button" onClick={copyShareText}>
-                <Copy size={18} /> Copy link
-              </button>
-            </div>
-          </div>
-          <img
-            className="share-qr"
-            alt="Session QR code"
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(shareLink)}`}
-          />
-          <div className="share-meta">
-            <small className={store.isRemoteEnabled ? "database-status enabled" : "database-status"}>
-              {store.isRemoteEnabled ? "Database sync enabled." : "Local mode only."}
-            </small>
-            {store.syncError ? <small>Sync issue: {store.syncError}</small> : null}
-          </div>
-        </div>
-      ) : null}
+      {session.status === "Active" ? <SessionInviteCard session={session} store={store} /> : null}
 
-      <div className="table-card leaderboard-card">
-        <div className="leaderboard-header">
-          <h3>Participants</h3>
-          <div className="participant-stats">
-            <span>{activeCount} present</span>
-            <span className="participant-share-stat">
-              {session.billingMethod === "casual" ? "Fixed Price/match" : "Court share"}{" "}
-              {formatVnd(session.billingMethod === "casual" ? fixedPricePerMatch : courtShare)}
-              <button
-                type="button"
-                className="participant-refresh-button"
-                onClick={refreshParticipants}
-                disabled={!store.isRemoteEnabled || store.isSyncing || isParticipantRefreshCoolingDown}
-                aria-label="Refresh participants from database"
-                title={store.isRemoteEnabled ? "Refresh participants" : "Database sync is not enabled"}
-              >
-                <RefreshIcon size={15} />
-              </button>
-            </span>
-          </div>
-        </div>
-        {duplicateRosterNames.length > 0 ? (
-          <p className="form-error duplicate-roster-warning">
-            Duplicate player names in this session: {duplicateRosterNames.join(", ")}. Rename or remove duplicates to avoid merged bills.
-          </p>
-        ) : null}
-        {isHost ? (
-          <form
-            className="participant-add-row"
-            onSubmit={(event) => {
-              event.preventDefault();
-              addParticipant();
-            }}
-          >
-            <input
-              value={participantName}
-              onChange={(event) => setParticipantName(event.target.value)}
-              placeholder="Add player name"
-            />
-            <button type="submit" className="secondary-button">
-              <Plus size={18} /> Add
-            </button>
-          </form>
-        ) : null}
-        {bills.map((bill) => {
-          const isPendingRemoval = pendingRemovedPlayerIds.includes(bill.user.id);
-          const isCollapsingRemoval = collapsingRemovedPlayerIds.includes(bill.user.id);
-          const isCurrentPlayer = Boolean(currentPlayerId && bill.userIds.includes(currentPlayerId));
-          return (
-          <div
-            className={[
-              "leaderboard-player",
-              bill.isPresent ? "" : "not-present",
-              isCurrentPlayer ? "current-player" : "",
-              expandedPlayerId === bill.user.id ? "is-expanded" : "",
-              isPendingRemoval ? "pending-removal" : "",
-              isCollapsingRemoval ? "collapsing-removal" : "",
-            ].filter(Boolean).join(" ")}
-            key={bill.user.id}
-          >
-            {isPendingRemoval ? (
-              <div className="participant-remove-notice">
-                <span>{bill.user.name} has removed.</span>
-                <button type="button" onClick={() => undoRemovePlayer(bill.user.id)}>
-                  Undo
-                </button>
-              </div>
-            ) : (
-            <div
-              className="leader-row"
-              role="button"
-              tabIndex={0}
-              onClick={() =>
-                setExpandedPlayerId((current) => (current === bill.user.id ? null : bill.user.id))
-              }
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  setExpandedPlayerId((current) => (current === bill.user.id ? null : bill.user.id));
-                }
-              }}
-            >
-              <div className="leader-player-copy">
-                <div className="leader-name-line">
-                  <strong>{bill.user.name}</strong>
-                  {isCurrentPlayer ? <span className="you-badge">(You)</span> : null}
-                  {bill.isHost ? <span className="host-badge">Host</span> : null}
-                </div>
-                <span>
-                  {bill.isPresent ? "" : "No-show · "}
-                  {bill.matchesPlayed} matches · <strong className="leader-row-amount">{formatVnd(bill.totalDue)}</strong>
-                </span>
-              </div>
-              {isHost ? (
-                <div className="bill-toggles" onClick={(event) => event.stopPropagation()}>
-                  <label className="paid-toggle">
-                    <input
-                      type="checkbox"
-                      checked={bill.isPresent}
-                      onChange={() => store.togglePresent(session.id, bill.user.id)}
-                    />
-                    <span className="toggle-dot" aria-hidden="true" />
-                    Present
-                  </label>
-                  <label className="paid-toggle">
-                    <input
-                      type="checkbox"
-                      checked={bill.paid}
-                      onChange={() => store.togglePaid(session.id, bill.user.id)}
-                    />
-                    <span className="toggle-dot" aria-hidden="true" />
-                    Paid
-                  </label>
-                  <button
-                    type="button"
-                    className="delete-player-button"
-                    aria-label={`Delete ${bill.user.name} from session`}
-                    disabled={bill.isHost}
-                    title={bill.isHost ? "Host cannot be removed" : undefined}
-                    onClick={() => scheduleRemovePlayer(bill.user.id)}
-                  >
-                    <Trash2 size={17} />
-                  </button>
-                </div>
-              ) : null}
-              {expandedPlayerId === bill.user.id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-            </div>
-            )}
-            {!isPendingRemoval && expandedPlayerId === bill.user.id ? (
-              <PlayerMatchHistory
-                matches={sessionMatches}
-                state={store.state}
-                session={session}
-                playerId={bill.user.id}
-                highlightMatchId={highlightMatchId}
-                canManageStake={isHost && session.status === "Active"}
-                onToggleStake={store.toggleMatchStake}
-              />
-            ) : null}
-          </div>
-          );
-        })}
-      </div>
-
+      <ParticipantPanel
+        session={session}
+        store={store}
+        sessionMatches={sessionMatches}
+        isHost={isHost}
+        currentPlayerId={currentPlayerId}
+        highlightMatchId={highlightMatchId}
+      />
       <BillingSettings
         isHost={isHost}
         method={session.billingMethod ?? "standard"}
         onChange={(billingMethod) => store.updateBillingMethod(session.id, billingMethod)}
       />
 
-      <div className="metric-grid report-stats-grid">
-        <CourtPriceMetric
-          isHost={isHost}
-          value={session.courtPrice}
-          captionLabel={session.billingMethod === "casual" ? "Fixed price/match" : "Court share/person"}
-          captionValue={session.billingMethod === "casual" ? fixedPricePerMatch : courtShare}
-          draft={courtPriceDraft}
-          isEditing={isCourtPriceEditing}
-          onDraftChange={setCourtPriceDraft}
-          onEdit={() => setIsCourtPriceEditing(true)}
-          onCancel={() => {
-            setCourtPriceDraft(formatVnd(session.courtPrice));
-            setIsCourtPriceEditing(false);
-          }}
-          onSubmit={submitCourtPrice}
-        />
-        <EditableNumberMetric
-          isHost={isHost}
-          label="Total matches"
-          value={maxMatches(session)}
-          draft={totalMatchesDraft}
-          isEditing={isTotalMatchesEditing}
-          onDraftChange={setTotalMatchesDraft}
-          onEdit={() => setIsTotalMatchesEditing(true)}
-          onCancel={() => {
-            setTotalMatchesDraft(formatStatNumber(maxMatches(session)));
-            setIsTotalMatchesEditing(false);
-          }}
-          onSubmit={submitTotalMatches}
-        />
-        <Metric label="Shuttle Cost / Match" value={formatVnd(shuttleFee)} />
-        <MatchDurationMetric
-          isHost={isHost}
-          value={session.matchDuration}
-          draft={matchDurationDraft}
-          isEditing={isMatchDurationEditing}
-          onDraftChange={setMatchDurationDraft}
-          onEdit={() => setIsMatchDurationEditing(true)}
-          onCancel={() => {
-            setMatchDurationDraft(String(session.matchDuration));
-            setIsMatchDurationEditing(false);
-          }}
-          onSubmit={submitMatchDuration}
-        />
-        <EditableMinuteMetric
-          isHost={isHost}
-          label="Total court time"
-          value={session.totalCourtTime}
-          draft={totalCourtTimeDraft}
-          isEditing={isTotalCourtTimeEditing}
-          onDraftChange={setTotalCourtTimeDraft}
-          onEdit={() => setIsTotalCourtTimeEditing(true)}
-          onCancel={() => {
-            setTotalCourtTimeDraft(String(session.totalCourtTime));
-            setIsTotalCourtTimeEditing(false);
-          }}
-          onSubmit={submitTotalCourtTime}
-        />
-        <Metric label="Matches logged" value={`${sessionMatches.length}/${formatStatNumber(maxMatches(session))}`} />
-        <Metric label="Collected" value={formatVnd(collected)} />
-        <Metric label="Profit / loss" value={formatVnd(totalDue - sessionCost)} />
-      </div>
-
+      <BillingStats
+        session={session}
+        state={store.state}
+        store={store}
+        isHost={isHost}
+        sessionMatches={sessionMatches}
+        totalDue={totalDue}
+        collected={collected}
+      />
       <div className="table-card master-log-card">
         <div className="section-header compact">
           <h3>Master log</h3>
@@ -1385,65 +961,6 @@ function MatchLogRow({
   );
 }
 
-function PlayerMatchHistory({
-  matches,
-  state,
-  session,
-  playerId,
-  highlightMatchId,
-  canManageStake,
-  onToggleStake,
-}: {
-  matches: Match[];
-  state: TrackerState;
-  session: Session;
-  playerId: string;
-  highlightMatchId?: string;
-  canManageStake: boolean;
-  onToggleStake: (matchId: string) => void;
-}) {
-  const player = state.users.find((user) => user.id === playerId);
-  const playerMatches = matches.filter(
-    (match) => match.playerAId === playerId || match.playerBId === playerId,
-  );
-
-  if (!player || playerMatches.length === 0) {
-    return <p className="empty-state player-history-empty">No matches recorded for this player.</p>;
-  }
-
-  return (
-    <div className="player-history">
-      {playerMatches.map((match, index) => {
-        const isPlayerA = match.playerAId === playerId;
-        const opponentId = isPlayerA ? match.playerBId : match.playerAId;
-        const opponent = state.users.find((user) => user.id === opponentId)?.name ?? "Unknown";
-        const isHighlighted = match.id === highlightMatchId;
-        const isCurrentPlayerHost = state.roster.some((entry) => entry.sessionId === session.id && entry.userId === player.id && entry.isHost);
-        const isOpponentHost = state.roster.some((entry) => entry.sessionId === session.id && entry.userId === opponentId && entry.isHost);
-
-        return (
-          <MatchSummaryCard
-            match={match}
-            number={playerMatches.length - index}
-            sessionName={sessionTitle(session)}
-            currentPlayerId={player.id}
-            currentPlayerName={player.name}
-            opponentName={opponent}
-            isCurrentPlayerHost={isCurrentPlayerHost}
-            isOpponentHost={isOpponentHost}
-            isHighlighted={isHighlighted}
-            showSessionName={false}
-            canToggleStake={canManageStake}
-            onToggleStake={() => onToggleStake(match.id)}
-            id={`match-history-${match.id}`}
-            key={match.id}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
 function MoneyField({
   label,
   value,
@@ -1547,264 +1064,11 @@ function NumberField({
   );
 }
 
-function CourtPriceMetric({
-  isHost,
-  value,
-  captionLabel,
-  captionValue,
-  draft,
-  isEditing,
-  onDraftChange,
-  onEdit,
-  onCancel,
-  onSubmit,
-}: {
-  isHost: boolean;
-  value: number;
-  captionLabel: string;
-  captionValue: number;
-  draft: string;
-  isEditing: boolean;
-  onDraftChange: (value: string) => void;
-  onEdit: () => void;
-  onCancel: () => void;
-  onSubmit: () => void;
-}) {
-  if (!isHost) {
-    return (
-      <div className="metric-card court-price-card">
-        <span>Total court money</span>
-        <strong>{formatVnd(value)}</strong>
-        <small className="metric-caption">{captionLabel}: {formatVnd(captionValue)}</small>
-      </div>
-    );
-  }
-
-  return (
-    <div className="metric-card court-price-card">
-      <span>Total court money</span>
-      {isEditing ? (
-        <form
-          className="court-price-editor"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onSubmit();
-          }}
-        >
-          <input
-            autoFocus
-            inputMode="decimal"
-            value={draft}
-            placeholder="1.5*120000"
-            onChange={(event) => onDraftChange(event.target.value.replace(/[^\d.*\s]/g, ""))}
-            onBlur={onSubmit}
-          />
-          <button type="submit">Save</button>
-          <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={onCancel}>
-            Cancel
-          </button>
-        </form>
-      ) : (
-        <button type="button" className="court-price-display" onClick={onEdit}>
-          <span>
-            <strong>{formatVnd(value)}</strong>
-            <small className="metric-caption">{captionLabel}: {formatVnd(captionValue)}</small>
-          </span>
-          <small>Edit</small>
-        </button>
-      )}
-    </div>
-  );
-}
-
-function EditableNumberMetric({
-  isHost,
-  label,
-  value,
-  draft,
-  isEditing,
-  onDraftChange,
-  onEdit,
-  onCancel,
-  onSubmit,
-}: {
-  isHost: boolean;
-  label: string;
-  value: number;
-  draft: string;
-  isEditing: boolean;
-  onDraftChange: (value: string) => void;
-  onEdit: () => void;
-  onCancel: () => void;
-  onSubmit: () => void;
-}) {
-  if (!isHost) return <Metric label={label} value={formatStatNumber(value)} />;
-
-  return (
-    <div className="metric-card court-price-card">
-      <span>{label}</span>
-      {isEditing ? (
-        <form
-          className="court-price-editor"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onSubmit();
-          }}
-        >
-          <input
-            autoFocus
-            inputMode="decimal"
-            value={draft}
-            onChange={(event) => onDraftChange(event.target.value.replace(/[^\d.]/g, ""))}
-            onBlur={onSubmit}
-          />
-          <button type="submit">Save</button>
-          <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={onCancel}>
-            Cancel
-          </button>
-        </form>
-      ) : (
-        <button type="button" className="court-price-display" onClick={onEdit}>
-          <strong>{formatStatNumber(value)}</strong>
-          <small>Edit</small>
-        </button>
-      )}
-    </div>
-  );
-}
-
-function MatchDurationMetric({
-  isHost,
-  value,
-  draft,
-  isEditing,
-  onDraftChange,
-  onEdit,
-  onCancel,
-  onSubmit,
-}: {
-  isHost: boolean;
-  value: number;
-  draft: string;
-  isEditing: boolean;
-  onDraftChange: (value: string) => void;
-  onEdit: () => void;
-  onCancel: () => void;
-  onSubmit: () => void;
-}) {
-  return (
-    <EditableMinuteMetric
-      isHost={isHost}
-      label="Match duration"
-      value={value}
-      draft={draft}
-      isEditing={isEditing}
-      onDraftChange={onDraftChange}
-      onEdit={onEdit}
-      onCancel={onCancel}
-      onSubmit={onSubmit}
-    />
-  );
-}
-
-function EditableMinuteMetric({
-  isHost,
-  label,
-  value,
-  draft,
-  isEditing,
-  onDraftChange,
-  onEdit,
-  onCancel,
-  onSubmit,
-}: {
-  isHost: boolean;
-  label: string;
-  value: number;
-  draft: string;
-  isEditing: boolean;
-  onDraftChange: (value: string) => void;
-  onEdit: () => void;
-  onCancel: () => void;
-  onSubmit: () => void;
-}) {
-  if (!isHost) return <Metric label={label} value={formatMinutesWithHours(value)} />;
-
-  return (
-    <div className="metric-card court-price-card">
-      <span>{label}</span>
-      {isEditing ? (
-        <form
-          className="court-price-editor"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onSubmit();
-          }}
-        >
-          <input
-            autoFocus
-            inputMode="numeric"
-            value={draft}
-            onChange={(event) => onDraftChange(event.target.value.replace(/\D/g, ""))}
-            onBlur={onSubmit}
-          />
-          <button type="submit">Save</button>
-          <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={onCancel}>
-            Cancel
-          </button>
-        </form>
-      ) : (
-        <button type="button" className="court-price-display" onClick={onEdit}>
-          <strong>{formatMinutesWithHours(value)}</strong>
-          <small>Edit</small>
-        </button>
-      )}
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="metric-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat("vi-VN", {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
-}
-
-function formatStatNumber(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, "");
-}
-
-function formatMinutesWithHours(minutes: number): string {
-  const formattedMinutes = `${formatStatNumber(minutes)} min`;
-  if (!Number.isFinite(minutes) || minutes <= 0) return formattedMinutes;
-  const hours = minutes / 60;
-  const hourLabel = hours === 1 ? "hour" : "hours";
-  return `${formattedMinutes} - ${formatStatNumber(hours)} ${hourLabel}`;
-}
-
-function parseCourtMoneyInput(value: string): number {
-  const normalized = value.replace(/\s+/g, "");
-  if (!normalized) return 0;
-
-  if (normalized.includes("*")) {
-    const parts = normalized.split("*");
-    if (parts.length !== 2) return 0;
-    const hours = Number(parts[0]);
-    const hourlyPrice = Number(parts[1]);
-    if (!Number.isFinite(hours) || !Number.isFinite(hourlyPrice)) return 0;
-    return Math.round(hours * hourlyPrice);
-  }
-
-  return parseMoneyInput(value);
 }
 
 function sessionTitle(session: Session): string {
@@ -1950,21 +1214,6 @@ function resolveSetupUsersForSession(setupUsers: User[], existingUsers: User[]):
   );
 }
 
-function duplicateSessionRosterNames(sessionId: string, state: TrackerState): string[] {
-  const seenNames = new Set<string>();
-  const duplicateNames = new Set<string>();
-  state.roster
-    .filter((entry) => entry.sessionId === sessionId)
-    .forEach((entry) => {
-      const user = state.users.find((candidate) => candidate.id === entry.userId);
-      if (!user) return;
-      const key = user.name.trim().toLowerCase();
-      if (seenNames.has(key)) duplicateNames.add(user.name);
-      seenNames.add(key);
-    });
-  return Array.from(duplicateNames);
-}
-
 function downloadSummary(session: Session, state: TrackerState) {
   const bills = playerBills({ session, users: state.users, roster: state.roster, matches: state.matches });
   const canvas = document.createElement("canvas");
@@ -2003,3 +1252,6 @@ function downloadSummary(session: Session, state: TrackerState) {
   link.href = canvas.toDataURL("image/png");
   link.click();
 }
+
+
+

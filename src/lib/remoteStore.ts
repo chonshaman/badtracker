@@ -36,7 +36,6 @@ type RemoteSession = {
   shuttles_per_tube: number;
   match_duration: number;
   total_court_time: number;
-  fee_per_person: number;
   billing_method?: BillingMethod | null;
   status: Session["status"];
   created_at: string;
@@ -403,6 +402,13 @@ export async function remoteUpdateMatchStake(matchId: string, isStake: boolean, 
   });
 }
 
+export async function remoteUpdateMatchScore(matchId: string, score: string | undefined, winnerId?: string) {
+  await request(`matches?id=eq.${encodeURIComponent(matchId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ score: score ?? null, winner_id: winnerId ?? null }),
+  });
+}
+
 function fromRemoteSession(session: RemoteSession): Session {
   return {
     id: session.id,
@@ -415,7 +421,6 @@ function fromRemoteSession(session: RemoteSession): Session {
     shuttlesPerTube: session.shuttles_per_tube,
     matchDuration: session.match_duration,
     totalCourtTime: session.total_court_time,
-    feePerPerson: session.fee_per_person,
     billingMethod: session.billing_method ?? "standard",
     status: session.status,
     createdAt: session.created_at,
@@ -435,7 +440,6 @@ function toRemoteSession(session: Session, includeName = true): RemoteSession {
     shuttles_per_tube: session.shuttlesPerTube,
     match_duration: session.matchDuration,
     total_court_time: session.totalCourtTime,
-    fee_per_person: session.feePerPerson,
     billing_method: includeName ? session.billingMethod : undefined,
     status: session.status,
     created_at: session.createdAt,

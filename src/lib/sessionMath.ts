@@ -1,22 +1,5 @@
 import type { PlayerBill, RosterEntry, Session, User } from "../types";
 
-export function calculateFee(input: {
-  courtPrice: number;
-  shuttlePrice: number;
-  shuttlesPerTube: number;
-  matchDuration: number;
-  totalCourtTime: number;
-}): number {
-  const maxMatches = input.totalCourtTime / input.matchDuration;
-  if (!Number.isFinite(maxMatches) || maxMatches <= 0 || input.shuttlesPerTube <= 0) {
-    return 0;
-  }
-
-  const courtCostPerMatch = input.courtPrice / maxMatches;
-  const shuttleCostPerMatch = input.shuttlePrice / input.shuttlesPerTube;
-  return Math.ceil((courtCostPerMatch + shuttleCostPerMatch) / 2);
-}
-
 export function maxMatches(session: Session): number {
   return session.totalCourtTime / session.matchDuration;
 }
@@ -88,14 +71,13 @@ export function playerBills(args: {
     .forEach((entry) => {
       const user = args.users.find((candidate) => candidate.id === entry.userId);
       if (!user) return;
-      const key = user.name.trim().toLowerCase();
-      const existing = groupedEntries.get(key);
+      const existing = groupedEntries.get(user.id);
       if (existing) {
         existing.entries.push(entry);
         existing.userIds.push(user.id);
         return;
       }
-      groupedEntries.set(key, { user, entries: [entry], userIds: [user.id] });
+      groupedEntries.set(user.id, { user, entries: [entry], userIds: [user.id] });
     });
 
   return Array.from(groupedEntries.values())

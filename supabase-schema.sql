@@ -17,7 +17,6 @@ create table if not exists sessions (
   shuttles_per_tube integer not null,
   match_duration integer not null,
   total_court_time integer not null,
-  fee_per_person integer not null,
   billing_method varchar(20) not null default 'standard' check (billing_method in ('standard', 'casual')),
   status text not null check (status in ('Active', 'Closed')),
   created_at timestamptz not null,
@@ -28,6 +27,7 @@ alter table sessions add column if not exists host_user_id uuid default auth.uid
 alter table sessions add column if not exists name text;
 alter table sessions add column if not exists pin_code text;
 alter table sessions add column if not exists billing_method varchar(20) not null default 'standard' check (billing_method in ('standard', 'casual'));
+alter table sessions drop column if exists fee_per_person;
 
 create table if not exists session_roster (
   session_id text not null references sessions(id) on delete cascade,

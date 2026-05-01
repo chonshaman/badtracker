@@ -31,7 +31,6 @@ export type Session = {
   shuttlesPerTube: number;
   matchDuration: number;
   totalCourtTime: number;
-  feePerPerson: number;
   billingMethod: BillingMethod;
   status: SessionStatus;
   createdAt: string;

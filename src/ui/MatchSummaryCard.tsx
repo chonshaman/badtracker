@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
 import type { To } from "react-router-dom";
+import { hasRecordedScore, matchScoreParts } from "../lib/scoreFlow";
 import type { Match } from "../types";
-import { BadmintonIcon, ChevronRight, ShuttleIcon } from "./icons";
+import { ChevronRight, ShuttleIcon, Trash2 } from "./icons";
 
 type MatchSummaryCardProps = {
   match: Match;
@@ -19,6 +20,8 @@ type MatchSummaryCardProps = {
   showSessionName?: boolean;
   canToggleStake?: boolean;
   onToggleStake?: () => void;
+  onAddScore?: () => void;
+  onDelete?: () => void;
 };
 
 export function MatchSummaryCard({
@@ -37,7 +40,10 @@ export function MatchSummaryCard({
   showSessionName = true,
   canToggleStake = false,
   onToggleStake,
+  onAddScore,
+  onDelete,
 }: MatchSummaryCardProps) {
+  const hasScore = hasRecordedScore(match.score);
   const isStakeWinner = match.isStake && match.winnerId === currentPlayerId;
   const scoreParts = matchScoreParts(match.score, match.playerAId === currentPlayerId);
   const opponentId = match.playerAId === currentPlayerId ? match.playerBId : match.playerAId;
@@ -46,6 +52,8 @@ export function MatchSummaryCard({
   const className = [
     "match-card",
     match.isStake ? (isStakeWinner ? "stake-win" : "stake-loss") : "",
+    !hasScore ? "no-score" : "",
+    onAddScore && !hasScore ? "has-add-score" : "",
     isHighlighted ? "highlighted-match" : "",
   ].filter(Boolean).join(" ");
   const content = (
@@ -53,7 +61,6 @@ export function MatchSummaryCard({
       <div className="match-card-scoreboard">
         <div className="match-player-line with-divider">
           <span className="match-player-name">
-            {!match.score ? <BadmintonIcon size={16} /> : null}
             {currentPlayerName}
             {isCurrentPlayerHost ? <span className="host-badge match-host-badge">Host</span> : null}
           </span>
@@ -61,12 +68,11 @@ export function MatchSummaryCard({
             {isCurrentPlayerStakeLoser ? (
               <StakeControl isActive={match.isStake} canToggle={canToggleStake} onToggle={onToggleStake} />
             ) : null}
-            <span className="match-score-bubble score-primary">{scoreParts.current}</span>
+            {hasScore ? <span className="match-score-bubble score-primary">{scoreParts.current}</span> : null}
           </span>
         </div>
         <div className="match-player-line">
           <span className="match-player-name">
-            {!match.score ? <BadmintonIcon size={16} /> : null}
             {opponentName}
             {isOpponentHost ? <span className="host-badge match-host-badge">Host</span> : null}
           </span>
@@ -74,14 +80,25 @@ export function MatchSummaryCard({
             {isOpponentStakeLoser ? (
               <StakeControl isActive={match.isStake} canToggle={canToggleStake} onToggle={onToggleStake} />
             ) : null}
-            <span className="match-score-bubble score-secondary">{scoreParts.opponent}</span>
+            {hasScore ? <span className="match-score-bubble score-secondary">{scoreParts.opponent}</span> : null}
           </span>
         </div>
       </div>
       <div className="match-card-footer">
         <span>#{number} - {formatTime(match.createdAt)}</span>
-        {canToggleStake && !match.isStake ? (
-          <StakeControl isActive={false} canToggle={canToggleStake} onToggle={onToggleStake} />
+        {onDelete ? (
+          <button
+            type="button"
+            className="match-delete-button"
+            aria-label={`Delete match #${number}`}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onDelete();
+            }}
+          >
+            <Trash2 size={16} />
+          </button>
         ) : null}
         {showSessionName || to ? (
           <span className="match-card-session">
@@ -98,19 +115,36 @@ export function MatchSummaryCard({
     </>
   );
 
+  if (to && onAddScore && !hasScore) {
+    return (
+      <article className={className} id={id}>
+        <Link className="match-card-main-link" to={to} state={state} aria-label={`Open report for ${sessionName}`}>
+          {content}
+        </Link>
+        <button
+          type="button"
+          className="match-add-score-button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onAddScore();
+          }}
+        >
+          Add score
+        </button>
+      </article>
+    );
+  }
+
   if (to) {
     return (
-      <Link className={className} to={to} state={state}>
+      <Link className={className} to={to} state={state} id={id}>
         {content}
       </Link>
     );
   }
 
-  return (
-    <article className={className} id={id}>
-      {content}
-    </article>
-  );
+  return <article className={className} id={id}>{content}</article>;
 }
 
 function StakeControl({
@@ -123,7 +157,7 @@ function StakeControl({
   onToggle?: () => void;
 }) {
   const className = isActive ? "match-stake-toggle active" : "match-stake-toggle";
-  if (!canToggle) return <span className={className}>Loser pay all</span>;
+  if (!canToggle) return <span className={className}>Lower score pay all</span>;
 
   return (
     <button
@@ -135,7 +169,7 @@ function StakeControl({
         onToggle?.();
       }}
     >
-      Loser pay all
+      Lower score pay all
     </button>
   );
 }
@@ -145,13 +179,4 @@ function formatTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
-}
-
-function matchScoreParts(score: string | undefined, isCurrentPlayerA: boolean): { current: string; opponent: string } {
-  if (!score) return { current: "-", opponent: "-" };
-  const [firstScore, secondScore] = score.split(/[-:]/).map((value) => value.trim());
-  if (!firstScore || !secondScore) return { current: "-", opponent: "-" };
-  return isCurrentPlayerA
-    ? { current: firstScore, opponent: secondScore }
-    : { current: secondScore, opponent: firstScore };
 }
