@@ -470,8 +470,11 @@ function PlayerDebtHeader({
         <ChevronRight size={18} />
       </Link>
       <div className="debt-breakdown" aria-label="Debt breakdown">
-        <span>{playerFeeLabel(session)}: {formatVnd(playerFeeMetric)}</span>
-        <span>Shuttle cost: {formatVnd(shuttleCostPerMatch)}</span>
+        <span>
+          {playerFeeLabel(session)}: {formatVnd(playerFeeMetric)}
+          {session.billingMethod === "casual" ? "/match" : ""}
+        </span>
+        <span>Shuttle cost: {formatVnd(shuttleCostPerMatch)}/match</span>
       </div>
       <HomeSessionDropdown
         sessions={sessions}
@@ -847,6 +850,37 @@ function MatchCard({
       state={{ backTo, playerId: currentUser.id, highlightMatchId: match.id }}
       onAddScore={!hasRecordedScore(match.score) ? onAddScore : undefined}
     />
+  );
+}
+
+export function PlayerBillingCard({
+  session,
+  playerFeeMetric,
+  shuttleCostPerMatch,
+}: {
+  session: Session;
+  playerFeeMetric: number;
+  shuttleCostPerMatch: number;
+}) {
+  const isCasual = session.billingMethod === "casual";
+  const methodLabel = isCasual ? "Casual (Pooled/Proportional)" : "Standard (Fixed Court + Per Match)";
+  return (
+    <section className="player-billing-card" aria-label="Billing settings">
+      <p>Billing settings</p>
+      <div className="player-billing-card-body">
+        <h3>{methodLabel}</h3>
+        <span className="player-billing-description">
+          {isCasual
+            ? "All court and shuttle costs are pooled, then split by each player match."
+            : "Court is split by present players + Shuttle is split only by players in each match."}
+        </span>
+        <strong className="player-billing-summary">
+          {isCasual
+            ? `Fixed fee: ${formatVnd(playerFeeMetric)}/match`
+            : `Court share: ${formatVnd(playerFeeMetric)} + Shuttle: ${formatVnd(shuttleCostPerMatch)}/match`}
+        </strong>
+      </div>
+    </section>
   );
 }
 

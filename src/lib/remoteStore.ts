@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import type { BillingMethod, Match, RosterEntry, Session, SessionParticipant, SessionPublicInfo, TrackerState, User } from "../types";
+import type { BillingMethod, Match, RosterEntry, Session, SessionActivity, SessionActivityType, SessionParticipant, SessionPublicInfo, TrackerState, User } from "../types";
 
 const supabaseUrl: string | undefined =
   import.meta.env.VITE_SUPABASE_URL ??
@@ -69,6 +69,17 @@ type RemoteMatch = {
   status: "Valid";
 };
 
+type RemoteSessionActivity = {
+  id: string;
+  session_id: string;
+  created_at: string;
+  type: SessionActivityType;
+  actor_user_id?: string | null;
+  target_user_id?: string | null;
+  match_id?: string | null;
+  metadata?: Record<string, string | number | boolean | null> | null;
+};
+
 type RemoteSessionPublicInfo = {
   session_name?: string | null;
   session_date?: string | null;
@@ -127,18 +138,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function loadRemoteState(fallbackUsers: User[]): Promise<TrackerState> {
-  const [users, sessions, roster, participants, matches] = await Promise.all([
+  const [users, sessions, roster, participants, matches, activities] = await Promise.all([
     request<User[]>("users?select=*"),
     request<RemoteSession[]>("sessions?select=*"),
     request<RemoteRosterEntry[]>("session_roster?select=*"),
     request<RemoteSessionParticipant[]>("session_participants?select=*"),
     request<RemoteMatch[]>("matches?select=*"),
+    requestOptional<RemoteSessionActivity[]>("session_activities?select=*"),
   ]);
 
   const remoteSessionIds = new Set(sessions.map((session) => session.id));
   const sessionRoster = roster.filter((entry) => remoteSessionIds.has(entry.session_id));
   const sessionParticipants = participants.filter((participant) => remoteSessionIds.has(participant.session_id));
   const sessionMatches = matches.filter((match) => remoteSessionIds.has(match.session_id));
+  const sessionActivities = activities.filter((activity) => remoteSessionIds.has(activity.session_id));
   const mergedUsers = mergeFallbackUsers(users, fallbackUsers, sessionRoster);
 
   return {
@@ -147,6 +160,7 @@ export async function loadRemoteState(fallbackUsers: User[]): Promise<TrackerSta
     roster: sessionRoster.map(fromRemoteRoster),
     participants: sessionParticipants.map(fromRemoteParticipant),
     matches: sessionMatches.map(fromRemoteMatch),
+    activities: sessionActivities.map(fromRemoteActivity),
   };
 }
 
@@ -171,6 +185,7 @@ export function subscribeRemoteChanges(onChange: () => void): () => void {
     .on("postgres_changes", { event: "*", schema: "public", table: "session_roster" }, onChange)
     .on("postgres_changes", { event: "*", schema: "public", table: "session_participants" }, onChange)
     .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, onChange)
+    .on("postgres_changes", { event: "*", schema: "public", table: "session_activities" }, onChange)
     .subscribe();
 
   return () => {
@@ -409,6 +424,14 @@ export async function remoteUpdateMatchScore(matchId: string, score: string | un
   });
 }
 
+export async function remoteAddActivity(activity: SessionActivity) {
+  await request("session_activities", {
+    method: "POST",
+    headers: { Prefer: "resolution=ignore-duplicates" },
+    body: JSON.stringify(toRemoteActivity(activity)),
+  });
+}
+
 function fromRemoteSession(session: RemoteSession): Session {
   return {
     id: session.id,
@@ -497,6 +520,19 @@ function fromRemoteMatch(match: RemoteMatch): Match {
   };
 }
 
+function fromRemoteActivity(activity: RemoteSessionActivity): SessionActivity {
+  return {
+    id: activity.id,
+    sessionId: activity.session_id,
+    createdAt: activity.created_at,
+    type: activity.type,
+    actorUserId: activity.actor_user_id ?? undefined,
+    targetUserId: activity.target_user_id ?? undefined,
+    matchId: activity.match_id ?? undefined,
+    metadata: activity.metadata ?? undefined,
+  };
+}
+
 function toRemoteMatch(match: Match): RemoteMatch {
   return {
     id: match.id,
@@ -509,6 +545,26 @@ function toRemoteMatch(match: Match): RemoteMatch {
     score: match.score,
     status: match.status,
   };
+}
+
+function toRemoteActivity(activity: SessionActivity): RemoteSessionActivity {
+  return {
+    id: activity.id,
+    session_id: activity.sessionId,
+    created_at: activity.createdAt,
+    type: activity.type,
+    actor_user_id: activity.actorUserId,
+    target_user_id: activity.targetUserId,
+    match_id: activity.matchId,
+    metadata: cleanMetadata(activity.metadata),
+  };
+}
+
+function cleanMetadata(metadata: SessionActivity["metadata"]): Record<string, string | number | boolean | null> {
+  if (!metadata) return {};
+  return Object.fromEntries(
+    Object.entries(metadata).filter(([, value]) => value !== undefined),
+  ) as Record<string, string | number | boolean | null>;
 }
 
 function isMissingSessionOptionalColumn(error: unknown): boolean {
@@ -525,6 +581,21 @@ function isDuplicateNameError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const message = error.message.toLowerCase();
   return message.includes("23505") && message.includes("users_name_key");
+}
+
+async function requestOptional<T>(path: string, init?: RequestInit): Promise<T> {
+  try {
+    return await request<T>(path, init);
+  } catch (error) {
+    if (isMissingRelation(error)) return [] as T;
+    throw error;
+  }
+}
+
+function isMissingRelation(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return message.includes("42p01") || message.includes("does not exist") || message.includes("schema cache");
 }
 
 async function findRemoteUserByName(name: string): Promise<User | undefined> {

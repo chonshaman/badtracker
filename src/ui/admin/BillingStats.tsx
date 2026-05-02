@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { formatVnd } from "../../lib/money";
 import { casualUnitPrice, courtSharePerPlayer, maxMatches, shuttleFeePerMatch } from "../../lib/sessionMath";
 import type { Match, Session, TrackerState } from "../../types";
@@ -13,6 +13,7 @@ export function BillingStats({
   sessionMatches,
   totalDue,
   collected,
+  settings,
 }: {
   session: Session;
   state: TrackerState;
@@ -21,6 +22,7 @@ export function BillingStats({
   sessionMatches: Match[];
   totalDue: number;
   collected: number;
+  settings?: ReactNode;
 }) {
   const [isCourtPriceEditing, setIsCourtPriceEditing] = useState(false);
   const [courtPriceDraft, setCourtPriceDraft] = useState(() => formatVnd(session.courtPrice));
@@ -35,6 +37,7 @@ export function BillingStats({
   const fixedPricePerMatch = casualUnitPrice(session, state.matches, state.roster);
   const shuttleFee = shuttleFeePerMatch(session);
   const sessionCost = session.courtPrice + (sessionMatches.length * session.shuttlePrice) / session.shuttlesPerTube;
+  const totalMatchCount = maxMatches(session);
 
   useEffect(() => {
     if (!isCourtPriceEditing) setCourtPriceDraft(formatVnd(session.courtPrice));
@@ -102,67 +105,87 @@ export function BillingStats({
   }
 
   return (
-    <div className="metric-grid report-stats-grid">
-      <CourtPriceMetric
-        isHost={isHost}
-        value={session.courtPrice}
-        captionLabel={session.billingMethod === "casual" ? "Fixed price/match" : "Court share/person"}
-        captionValue={session.billingMethod === "casual" ? fixedPricePerMatch : courtShare}
-        draft={courtPriceDraft}
-        isEditing={isCourtPriceEditing}
-        onDraftChange={setCourtPriceDraft}
-        onEdit={() => setIsCourtPriceEditing(true)}
-        onCancel={() => {
-          setCourtPriceDraft(formatVnd(session.courtPrice));
-          setIsCourtPriceEditing(false);
-        }}
-        onSubmit={submitCourtPrice}
-      />
-      <EditableNumberMetric
-        isHost={isHost}
-        label="Total matches"
-        value={maxMatches(session)}
-        draft={totalMatchesDraft}
-        isEditing={isTotalMatchesEditing}
-        onDraftChange={setTotalMatchesDraft}
-        onEdit={() => setIsTotalMatchesEditing(true)}
-        onCancel={() => {
-          setTotalMatchesDraft(formatStatNumber(maxMatches(session)));
-          setIsTotalMatchesEditing(false);
-        }}
-        onSubmit={submitTotalMatches}
-      />
-      <Metric label="Shuttle Cost / Match" value={formatVnd(shuttleFee)} />
-      <MatchDurationMetric
-        isHost={isHost}
-        value={session.matchDuration}
-        draft={matchDurationDraft}
-        isEditing={isMatchDurationEditing}
-        onDraftChange={setMatchDurationDraft}
-        onEdit={() => setIsMatchDurationEditing(true)}
-        onCancel={() => {
-          setMatchDurationDraft(String(session.matchDuration));
-          setIsMatchDurationEditing(false);
-        }}
-        onSubmit={submitMatchDuration}
-      />
-      <EditableMinuteMetric
-        isHost={isHost}
-        label="Total court time"
-        value={session.totalCourtTime}
-        draft={totalCourtTimeDraft}
-        isEditing={isTotalCourtTimeEditing}
-        onDraftChange={setTotalCourtTimeDraft}
-        onEdit={() => setIsTotalCourtTimeEditing(true)}
-        onCancel={() => {
-          setTotalCourtTimeDraft(String(session.totalCourtTime));
-          setIsTotalCourtTimeEditing(false);
-        }}
-        onSubmit={submitTotalCourtTime}
-      />
-      <Metric label="Matches logged" value={`${sessionMatches.length}/${formatStatNumber(maxMatches(session))}`} />
-      <Metric label="Collected" value={formatVnd(collected)} />
-      <Metric label="Profit / loss" value={formatVnd(totalDue - sessionCost)} />
+    <>
+      <div className="billing-config-row">
+        <div className="billing-settings-column">{settings}</div>
+        <div className="billing-setup-column">
+          <div className="billing-setup-grid">
+            <CourtPriceMetric
+              isHost={isHost}
+              value={session.courtPrice}
+              captionLabel={session.billingMethod === "casual" ? "Fixed price/match" : "Court share/person"}
+              captionValue={session.billingMethod === "casual" ? fixedPricePerMatch : courtShare}
+              draft={courtPriceDraft}
+              isEditing={isCourtPriceEditing}
+              onDraftChange={setCourtPriceDraft}
+              onEdit={() => setIsCourtPriceEditing(true)}
+              onCancel={() => {
+                setCourtPriceDraft(formatVnd(session.courtPrice));
+                setIsCourtPriceEditing(false);
+              }}
+              onSubmit={submitCourtPrice}
+            />
+            <EditableNumberMetric
+              isHost={isHost}
+              label="Total court time"
+              value={session.totalCourtTime}
+              displayValue={formatMinutesApproxHours(session.totalCourtTime)}
+              draft={totalCourtTimeDraft}
+              isEditing={isTotalCourtTimeEditing}
+              onDraftChange={setTotalCourtTimeDraft}
+              onEdit={() => setIsTotalCourtTimeEditing(true)}
+              onCancel={() => {
+                setTotalCourtTimeDraft(String(session.totalCourtTime));
+                setIsTotalCourtTimeEditing(false);
+              }}
+              onSubmit={submitTotalCourtTime}
+            />
+            <EditableNumberMetric
+              isHost={isHost}
+              label="Total matches"
+              value={totalMatchCount}
+              draft={totalMatchesDraft}
+              isEditing={isTotalMatchesEditing}
+              onDraftChange={setTotalMatchesDraft}
+              onEdit={() => setIsTotalMatchesEditing(true)}
+              onCancel={() => {
+                setTotalMatchesDraft(formatStatNumber(maxMatches(session)));
+                setIsTotalMatchesEditing(false);
+              }}
+              onSubmit={submitTotalMatches}
+            />
+            <MatchDurationMetric
+              isHost={isHost}
+              value={session.matchDuration}
+              draft={matchDurationDraft}
+              isEditing={isMatchDurationEditing}
+              onDraftChange={setMatchDurationDraft}
+              onEdit={() => setIsMatchDurationEditing(true)}
+              onCancel={() => {
+                setMatchDurationDraft(String(session.matchDuration));
+                setIsMatchDurationEditing(false);
+              }}
+              onSubmit={submitMatchDuration}
+            />
+            <div className="billing-live-strip billing-live-cell">
+              <LiveMetric label="Matches" value={`${sessionMatches.length}/${formatStatNumber(totalMatchCount)}`} caption="logged" />
+              <LiveMetric label="Collected" value={formatVnd(collected)} caption="paid" />
+              <LiveMetric label="Profit / loss" value={formatVnd(totalDue - sessionCost)} caption="balance" />
+            </div>
+            <Metric label="Shuttle Cost / Match" value={formatVnd(shuttleFee)} />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function LiveMetric({ label, value, caption }: { label: string; value: string; caption: string }) {
+  return (
+    <div className="billing-live-metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{caption}</small>
     </div>
   );
 }
@@ -192,31 +215,36 @@ function CourtPriceMetric({
 }) {
   return (
     <div className="metric-card editable-metric-card">
-      <span>Total court money</span>
       {isEditing ? (
-        <form
-          className="metric-edit-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onSubmit();
-          }}
-        >
-          <input value={draft} onChange={(event) => onDraftChange(event.target.value)} autoFocus />
-          <div className="metric-edit-actions">
-            <button type="submit">Save</button>
-            <button type="button" onClick={onCancel}>
-              Cancel
-            </button>
-          </div>
-        </form>
+        <>
+          <span>Total court money</span>
+          <form
+            className="metric-edit-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onSubmit();
+            }}
+          >
+            <input value={draft} onChange={(event) => onDraftChange(event.target.value)} autoFocus />
+            <div className="metric-edit-actions">
+              <button type="submit">Save</button>
+              <button type="button" onClick={onCancel}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </>
       ) : (
         <>
-          <strong>{formatVnd(value)}</strong>
-          <small>
-            {captionLabel} {formatVnd(captionValue)}
-          </small>
+          <div className="metric-card-content">
+            <span>Total court money</span>
+            <strong>{formatVnd(value)}</strong>
+            <small>
+              {captionLabel} {formatVnd(captionValue)}
+            </small>
+          </div>
           {isHost ? (
-            <button type="button" onClick={onEdit}>
+            <button type="button" className="metric-edit-trigger" onClick={onEdit}>
               Edit
             </button>
           ) : null}
@@ -230,6 +258,8 @@ function EditableNumberMetric({
   isHost,
   label,
   value,
+  displayValue,
+  caption,
   draft,
   isEditing,
   onDraftChange,
@@ -240,6 +270,8 @@ function EditableNumberMetric({
   isHost: boolean;
   label: string;
   value: number;
+  displayValue?: string;
+  caption?: string;
   draft: string;
   isEditing: boolean;
   onDraftChange: (value: string) => void;
@@ -249,28 +281,34 @@ function EditableNumberMetric({
 }) {
   return (
     <div className="metric-card editable-metric-card">
-      <span>{label}</span>
       {isEditing ? (
-        <form
-          className="metric-edit-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onSubmit();
-          }}
-        >
-          <input value={draft} onChange={(event) => onDraftChange(event.target.value)} autoFocus />
-          <div className="metric-edit-actions">
-            <button type="submit">Save</button>
-            <button type="button" onClick={onCancel}>
-              Cancel
-            </button>
-          </div>
-        </form>
+        <>
+          <span>{label}</span>
+          <form
+            className="metric-edit-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onSubmit();
+            }}
+          >
+            <input value={draft} onChange={(event) => onDraftChange(event.target.value)} autoFocus />
+            <div className="metric-edit-actions">
+              <button type="submit">Save</button>
+              <button type="button" onClick={onCancel}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </>
       ) : (
         <>
-          <strong>{formatStatNumber(value)}</strong>
+          <div className="metric-card-content">
+            <span>{label}</span>
+            <strong>{displayValue ?? formatStatNumber(value)}</strong>
+            {caption ? <small>{caption}</small> : null}
+          </div>
           {isHost ? (
-            <button type="button" onClick={onEdit}>
+            <button type="button" className="metric-edit-trigger" onClick={onEdit}>
               Edit
             </button>
           ) : null}
@@ -318,6 +356,7 @@ function EditableMinuteMetric({
   isHost,
   label,
   value,
+  caption,
   draft,
   isEditing,
   onDraftChange,
@@ -328,6 +367,7 @@ function EditableMinuteMetric({
   isHost: boolean;
   label: string;
   value: number;
+  caption?: string;
   draft: string;
   isEditing: boolean;
   onDraftChange: (value: string) => void;
@@ -337,29 +377,34 @@ function EditableMinuteMetric({
 }) {
   return (
     <div className="metric-card editable-metric-card">
-      <span>{label}</span>
       {isEditing ? (
-        <form
-          className="metric-edit-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onSubmit();
-          }}
-        >
-          <input value={draft} onChange={(event) => onDraftChange(event.target.value)} autoFocus />
-          <div className="metric-edit-actions">
-            <button type="submit">Save</button>
-            <button type="button" onClick={onCancel}>
-              Cancel
-            </button>
-          </div>
-        </form>
+        <>
+          <span>{label}</span>
+          <form
+            className="metric-edit-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onSubmit();
+            }}
+          >
+            <input value={draft} onChange={(event) => onDraftChange(event.target.value)} autoFocus />
+            <div className="metric-edit-actions">
+              <button type="submit">Save</button>
+              <button type="button" onClick={onCancel}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </>
       ) : (
         <>
-          <strong>{value} min</strong>
-          <small>{formatMinutesWithHours(value)}</small>
+          <div className="metric-card-content">
+            <span>{label}</span>
+            <strong>{value} min</strong>
+            <small>{caption ?? formatMinutesWithHours(value)}</small>
+          </div>
           {isHost ? (
-            <button type="button" onClick={onEdit}>
+            <button type="button" className="metric-edit-trigger" onClick={onEdit}>
               Edit
             </button>
           ) : null}
@@ -369,11 +414,12 @@ function EditableMinuteMetric({
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, caption }: { label: string; value: string; caption?: string }) {
   return (
     <div className="metric-card">
       <span>{label}</span>
       <strong>{value}</strong>
+      {caption ? <small>{caption}</small> : null}
     </div>
   );
 }
@@ -386,6 +432,17 @@ function formatMinutesWithHours(minutes: number): string {
   if (!Number.isFinite(minutes) || minutes <= 0) return "0 min";
   const hours = minutes / 60;
   return Number.isInteger(hours) ? `${minutes} min - ${hours} hours` : `${minutes} min - ${hours.toFixed(1)} hours`;
+}
+
+function formatHours(minutes: number): string {
+  if (!Number.isFinite(minutes) || minutes <= 0) return "0 hours";
+  const hours = minutes / 60;
+  return Number.isInteger(hours) ? `${hours} ${hours === 1 ? "hour" : "hours"}` : `${hours.toFixed(1)} hours`;
+}
+
+function formatMinutesApproxHours(minutes: number): string {
+  if (!Number.isFinite(minutes) || minutes <= 0) return "0 mins";
+  return `${formatStatNumber(minutes)} mins ~ ${formatHours(minutes)}`;
 }
 
 function parseCourtMoneyInput(value: string): number {

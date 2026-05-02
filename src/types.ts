@@ -70,12 +70,41 @@ export type Match = {
   status: "Valid";
 };
 
+export type SessionActivityType =
+  | "session_created"
+  | "session_closed"
+  | "player_joined"
+  | "player_added"
+  | "player_removed"
+  | "present_changed"
+  | "paid_changed"
+  | "billing_method_changed"
+  | "court_price_changed"
+  | "match_duration_changed"
+  | "total_court_time_changed"
+  | "match_added"
+  | "match_removed"
+  | "match_score_updated"
+  | "match_stake_changed";
+
+export type SessionActivity = {
+  id: string;
+  sessionId: string;
+  createdAt: string;
+  type: SessionActivityType;
+  actorUserId?: string;
+  targetUserId?: string;
+  matchId?: string;
+  metadata?: Record<string, string | number | boolean | null | undefined>;
+};
+
 export type TrackerState = {
   users: User[];
   sessions: Session[];
   roster: RosterEntry[];
   participants: SessionParticipant[];
   matches: Match[];
+  activities: SessionActivity[];
 };
 
 export type PlayerBill = {

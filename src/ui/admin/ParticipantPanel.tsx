@@ -135,21 +135,20 @@ export function ParticipantPanel({
     <div className="table-card leaderboard-card">
       <div className="leaderboard-header">
         <h3>Participants</h3>
+        <button
+          type="button"
+          className="participant-refresh-button"
+          onClick={refreshParticipants}
+          disabled={!store.isRemoteEnabled || store.isSyncing || isParticipantRefreshCoolingDown}
+          aria-label="Refresh participants from database"
+          title={store.isRemoteEnabled ? "Refresh participants" : "Database sync is not enabled"}
+        >
+          <RefreshIcon size={15} />
+        </button>
         <div className="participant-stats">
           <span>{activeCount} present</span>
-          <span className="participant-share-stat">
-            {session.billingMethod === "casual" ? "Fixed Price/match" : "Court share"}{" "}
-            {formatVnd(session.billingMethod === "casual" ? fixedPricePerMatch : courtShare)}
-            <button
-              type="button"
-              className="participant-refresh-button"
-              onClick={refreshParticipants}
-              disabled={!store.isRemoteEnabled || store.isSyncing || isParticipantRefreshCoolingDown}
-              aria-label="Refresh participants from database"
-              title={store.isRemoteEnabled ? "Refresh participants" : "Database sync is not enabled"}
-            >
-              <RefreshIcon size={15} />
-            </button>
+          <span className="participant-share-stat" title={formatVnd(session.billingMethod === "casual" ? fixedPricePerMatch : courtShare)}>
+            {session.billingMethod === "casual" ? "Casual (Pooled/Proportional)" : "Standard (Fixed Court + Cock/Match)"}
           </span>
         </div>
       </div>

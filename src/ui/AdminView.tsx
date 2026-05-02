@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { presets } from "../data/defaults";
 import { formatVnd, parseMoneyInput } from "../lib/money";
@@ -7,14 +7,17 @@ import type { DeletedSessionSnapshot } from "../lib/store";
 import { ArrowLeft, Check, ChevronDown, ChevronRight, Download, Info, Plus, ShuttleIcon, Trash2, X } from "./icons";
 import {
   activeRosterCount,
+  casualUnitPrice,
   courtSharePerPlayer,
   playerBills,
   shuttleFeePerMatch,
 } from "../lib/sessionMath";
-import type { BillingMethod, Match, RosterEntry, Session, TrackerState, User } from "../types";
+import type { BillingMethod, Match, RosterEntry, Session, SessionActivity, TrackerState, User } from "../types";
 import { BillingStats } from "./admin/BillingStats";
 import { ParticipantPanel } from "./admin/ParticipantPanel";
 import { SessionInviteCard } from "./admin/SessionInviteCard";
+import { PlayerBillingCard } from "./PlayerView";
+import { ActionButton } from "./common/ActionButton";
 
 type Store = ReturnType<typeof import("../lib/store").useTrackerStore>;
 
@@ -655,8 +658,12 @@ function ActiveSessionDashboard({
   const sessionMatches = store.state.matches
     .filter((match) => match.sessionId === session.id)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const sessionActivities = buildMasterLogEntries(session, store.state, sessionMatches);
   const totalDue = bills.reduce((sum, bill) => sum + bill.totalDue, 0);
   const collected = bills.filter((bill) => bill.paid).reduce((sum, bill) => sum + bill.totalDue, 0);
+  const currentPlayerFeeMetric = session.billingMethod === "casual"
+    ? casualUnitPrice(session, store.state.matches, previewRoster)
+    : courtSharePerPlayer(session, previewRoster);
 
   return (
     <section className="panel report-detail-panel">
@@ -667,16 +674,16 @@ function ActiveSessionDashboard({
             <span>{sessionTitle(session)}</span>
           </h2>
         </div>
-        <div className="header-actions">
-          {isHost && session.status === "Active" ? (
-            <button className="danger-button" onClick={() => setIsEndConfirmOpen(true)}>
-              End session
-            </button>
-          ) : null}
-        </div>
       </div>
 
-      {session.status === "Active" ? <SessionInviteCard session={session} store={store} /> : null}
+      {session.status === "Active" ? (
+        <SessionInviteCard
+          session={session}
+          store={store}
+          canEndSession={isHost}
+          onEndSession={() => setIsEndConfirmOpen(true)}
+        />
+      ) : null}
 
       <ParticipantPanel
         session={session}
@@ -687,36 +694,47 @@ function ActiveSessionDashboard({
         highlightMatchId={highlightMatchId}
         onPendingRemovalIdsChange={setPendingRemovedPlayerIds}
       />
-      <BillingSettings
-        isHost={isHost}
-        method={session.billingMethod ?? "standard"}
-        onChange={(billingMethod) => store.updateBillingMethod(session.id, billingMethod)}
-      />
-
-      <BillingStats
-        session={session}
-        state={{ ...store.state, roster: previewRoster }}
-        store={store}
-        isHost={isHost}
-        sessionMatches={sessionMatches}
-        totalDue={totalDue}
-        collected={collected}
-      />
+      <section className="table-card billing-section">
+        <BillingStats
+          session={session}
+          state={{ ...store.state, roster: previewRoster }}
+          store={store}
+          isHost={isHost}
+          sessionMatches={sessionMatches}
+          totalDue={totalDue}
+          collected={collected}
+          settings={
+            isHost ? (
+              <BillingSettings
+                isHost={isHost}
+                method={session.billingMethod ?? "standard"}
+                summary={billingMethodSummary(session, store.state, previewRoster)}
+                onChange={(billingMethod) => store.updateBillingMethod(session.id, billingMethod)}
+              />
+            ) : (
+              <PlayerBillingCard
+                session={session}
+                playerFeeMetric={currentPlayerFeeMetric}
+                shuttleCostPerMatch={shuttleFeePerMatch(session)}
+              />
+            )
+          }
+        />
+      </section>
       <div className="table-card master-log-card">
         <div className="section-header compact">
           <h3>Master log</h3>
           <button className="secondary-button" onClick={() => downloadSummary(session, store.state)}>
-            <Download size={18} /> Billing image
+            <Download size={18} /> EXPORT BILL
           </button>
         </div>
-        {sessionMatches.length === 0 ? (
-          <p className="empty-state">No matches recorded yet.</p>
+        {sessionActivities.length === 0 ? (
+          <p className="empty-state">No activity recorded yet.</p>
         ) : (
-          sessionMatches.map((match, index) => (
-            <MatchLogRow
-              key={match.id}
-              match={match}
-              number={sessionMatches.length - index}
+          sessionActivities.map((activity) => (
+            <MasterLogRow
+              key={activity.id}
+              activity={activity}
               state={store.state}
             />
           ))
@@ -729,9 +747,14 @@ function ActiveSessionDashboard({
             <h3>Delete session</h3>
             <p>This removes the session, participants, and match records from Supabase.</p>
           </div>
-          <button type="button" className="danger-button" onClick={() => setIsDeleteConfirmOpen(true)}>
-            <Trash2 size={18} /> Delete session
-          </button>
+          <ActionButton
+            variant="danger-strong"
+            className="delete-session-button"
+            iconStart={<Trash2 size={18} />}
+            onClick={() => setIsDeleteConfirmOpen(true)}
+          >
+            Delete session
+          </ActionButton>
         </div>
       ) : null}
 
@@ -762,24 +785,27 @@ function ActiveSessionDashboard({
 function BillingSettings({
   isHost,
   method,
+  summary,
   onChange,
 }: {
   isHost: boolean;
   method: BillingMethod;
+  summary: string;
   onChange: (method: BillingMethod) => void;
 }) {
   return (
-    <div className="table-card billing-settings-card">
-      <div>
-        <p className="eyebrow">Billing settings</p>
-        <h3>{billingMethodTitle(method)}</h3>
-        <span>{billingMethodDescription(method)}</span>
-      </div>
+    <div className="billing-settings-card">
+      <p className="billing-settings-eyebrow">Billing settings</p>
+      <h3>{billingMethodTitle(method)}</h3>
+      <div className="billing-method-row">
       {isHost ? (
         <BillingMethodDropdown value={method} onChange={onChange} compact />
       ) : (
-        <span className="billing-method-chip">Method: {billingMethodShortLabel(method)}</span>
+        <span className="billing-method-chip">{billingMethodShortLabel(method)}</span>
       )}
+      </div>
+      <small>{billingMethodDescription(method)}</small>
+      <span className="billing-method-summary">{summary}</span>
     </div>
   );
 }
@@ -905,9 +931,9 @@ function ConfirmSessionDeleteModal({
           <button type="button" className="secondary-button" onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" className="danger-button" onClick={onConfirm}>
+          <ActionButton variant="danger-strong" onClick={onConfirm}>
             Delete session
-          </button>
+          </ActionButton>
         </div>
       </div>
     </div>,
@@ -940,9 +966,9 @@ function ConfirmEndSessionModal({
           <button type="button" className="secondary-button" onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" className="danger-button" onClick={onConfirm}>
+          <ActionButton variant="danger-strong" onClick={onConfirm}>
             End session
-          </button>
+          </ActionButton>
         </div>
       </div>
     </div>,
@@ -950,28 +976,174 @@ function ConfirmEndSessionModal({
   );
 }
 
-function MatchLogRow({
-  match,
-  number,
+function MasterLogRow({
+  activity,
   state,
 }: {
-  match: Match;
-  number: number;
+  activity: SessionActivity;
   state: TrackerState;
 }) {
-  const playerA = state.users.find((user) => user.id === match.playerAId)?.name ?? "Unknown";
-  const playerB = state.users.find((user) => user.id === match.playerBId)?.name ?? "Unknown";
+  const actorName = activity.actorUserId ? userName(state, activity.actorUserId) : "Host";
+  const targetName = activity.targetUserId ? userName(state, activity.targetUserId) : String(activity.metadata?.targetName ?? "Player");
+  const match = activity.matchId ? state.matches.find((candidate) => candidate.id === activity.matchId) : undefined;
+  const matchData = getActivityMatchData(activity, match, state);
+  const message = activityMessageNode(activity, actorName, targetName, matchData);
+  const sessionMatchNumber = match
+    ? state.matches
+        .filter((candidate) => candidate.sessionId === activity.sessionId)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        .findIndex((candidate) => candidate.id === match.id) + 1
+    : 0;
   return (
     <div className="match-log-row">
-      <div>
-        <strong>Match #{String(number).padStart(2, "0")}</strong>
-        <span>
-          {formatTime(match.createdAt)} - {playerA} vs {playerB}
-          {match.score ? ` (${match.score})` : ""}
-        </span>
+      <span className="match-log-time">{formatTime(activity.createdAt)}</span>
+      <div className="match-log-body">
+        <p className="match-log-activity">{message}</p>
+        {matchData ? (
+          <div className="match-log-match-card">
+            <div className="match-log-copy">
+              <strong>{matchData.playerAName} vs {matchData.playerBName}</strong>
+              <span>
+                {formatTime(match?.createdAt ?? activity.createdAt)}
+                <span className="match-log-meta-separator" aria-hidden="true">
+                  •
+                </span>
+                #{Math.max(sessionMatchNumber, 1)}
+              </span>
+            </div>
+            {matchData.score ? (
+              <div className="match-log-result" aria-label={`Score ${matchData.score}`}>
+                <span className={matchData.winnerSide === "a" ? "won" : ""}>{matchData.scoreParts?.[0]}</span>
+                <span className="match-log-score-divider" aria-hidden="true">-</span>
+                <span className={matchData.winnerSide === "b" ? "won" : ""}>{matchData.scoreParts?.[1]}</span>
+              </div>
+            ) : (
+              <span className="match-log-empty">No score yet</span>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );
+}
+
+type MasterLogMatchData = {
+  playerAName: string;
+  playerBName: string;
+  score?: string;
+  scoreParts?: [string, string];
+  winnerName?: string;
+  winnerSide?: "a" | "b";
+};
+
+function buildMasterLogEntries(session: Session, state: TrackerState, sessionMatches: Match[]): SessionActivity[] {
+  const persistedActivities = (state.activities ?? [])
+    .filter((activity) => activity.sessionId === session.id);
+  const persistedMatchActivityIds = new Set(
+    persistedActivities
+      .filter((activity) => activity.type === "match_added" && activity.matchId)
+      .map((activity) => activity.matchId),
+  );
+  const fallbackMatchActivities: SessionActivity[] = sessionMatches
+    .filter((match) => !persistedMatchActivityIds.has(match.id))
+    .map((match) => ({
+      id: `fallback-${match.id}`,
+      sessionId: session.id,
+      createdAt: match.createdAt,
+      type: "match_added",
+      actorUserId: match.playerAId,
+      matchId: match.id,
+    }));
+  return [...persistedActivities, ...fallbackMatchActivities].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+function activityMessageNode(
+  activity: SessionActivity,
+  actorName: string,
+  targetName: string,
+  matchData?: MasterLogMatchData,
+): ReactNode {
+  const actor = <strong>@{actorName}</strong>;
+  const target = <strong>@{targetName}</strong>;
+  const matchNames = (
+    <strong>
+      {matchData?.playerAName ?? "Player"} vs {matchData?.playerBName ?? "Opponent"}
+    </strong>
+  );
+  switch (activity.type) {
+    case "session_created":
+      return (
+        <>
+          {actor} created session <strong>{String(activity.metadata?.sessionName ?? "this session")}</strong>
+        </>
+      );
+    case "session_closed":
+      return <>{actor} ended this session.</>;
+    case "player_joined":
+      return <>{target} joined this session.</>;
+    case "player_added":
+      return <>{actor} added player {target}</>;
+    case "player_removed":
+      return <>{actor} removed player {target}.</>;
+    case "present_changed":
+      return <>{actor} marked {target} as {activity.metadata?.isPresent ? "present" : "un-present"}.</>;
+    case "paid_changed":
+      return <>{actor} marked {target} as {activity.metadata?.paid ? "paid" : "unpaid"}.</>;
+    case "billing_method_changed":
+      return (
+        <>
+          {actor} changed the billing method from {methodLabel(activity.metadata?.from)} to {methodLabel(activity.metadata?.to)}.
+        </>
+      );
+    case "court_price_changed":
+      return <>{actor} changed total court money to <strong>{formatVnd(Number(activity.metadata?.value ?? 0))}</strong>.</>;
+    case "match_duration_changed":
+      return <>{actor} changed match duration to <strong>{activity.metadata?.value} min</strong>.</>;
+    case "total_court_time_changed":
+      return <>{actor} changed total court time to <strong>{activity.metadata?.value} min</strong>.</>;
+    case "match_removed":
+      return <>{actor} removed the match of {matchNames}.</>;
+    case "match_score_updated":
+      return <>{actor} updated the score of {matchNames}.</>;
+    case "match_stake_changed":
+      return <>{actor} {activity.metadata?.isStake ? "enabled" : "disabled"} lower score pay all.</>;
+    case "match_added":
+    default:
+      return <>{actor} added new match.</>;
+  }
+}
+
+function getActivityMatchData(activity: SessionActivity, match: Match | undefined, state: TrackerState): MasterLogMatchData | undefined {
+  const playerAId = match?.playerAId ?? stringMetadata(activity, "playerAId");
+  const playerBId = match?.playerBId ?? stringMetadata(activity, "playerBId");
+  const playerAName = playerAId ? userName(state, playerAId) : stringMetadata(activity, "playerAName");
+  const playerBName = playerBId ? userName(state, playerBId) : stringMetadata(activity, "playerBName");
+  if (!playerAName || !playerBName) return undefined;
+  const score = match?.score ?? stringMetadata(activity, "score");
+  const winnerId = match?.winnerId ?? stringMetadata(activity, "winnerId");
+  const winnerName = winnerId ? userName(state, winnerId) : stringMetadata(activity, "winnerName");
+  const scoreParts = score ? splitScore(score) : undefined;
+  const winnerSide = winnerId && playerAId === winnerId ? "a" : winnerId && playerBId === winnerId ? "b" : undefined;
+  return { playerAName, playerBName, score, scoreParts, winnerName, winnerSide };
+}
+
+function stringMetadata(activity: SessionActivity, key: string): string | undefined {
+  const value = activity.metadata?.[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function methodLabel(value: unknown): string {
+  return value === "casual" ? "Casual" : "Standard";
+}
+
+function userName(state: TrackerState, userId: string): string {
+  return state.users.find((user) => user.id === userId)?.name ?? "Player";
+}
+
+function splitScore(score: string): [string, string] | undefined {
+  const parts = score.split(/[-:]/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length !== 2) return undefined;
+  return [parts[0], parts[1]];
 }
 
 function MoneyField({
@@ -1124,10 +1296,22 @@ function billingMethodDescription(method: BillingMethod): string {
     : "Court is split by present players. Shuttle is split only by players in each match.";
 }
 
+function billingMethodSummary(session: Session, state: TrackerState, roster: RosterEntry[]): string {
+  if (session.billingMethod === "casual") {
+    return `Fixed fee: ${formatVnd(casualUnitPrice(session, state.matches, roster))}/match`;
+  }
+  return `Court share: ${formatVnd(courtSharePerPlayer(session, roster))} + Shuttle: ${formatVnd(shuttleFeePerMatch(session))}/match`;
+}
+
 function participantSessionRoles(state: TrackerState): Map<string, "host" | "player"> {
-  return new Map(
-    state.participants.map((participant) => [participant.sessionId, participant.role]),
-  );
+  const roles = new Map<string, "host" | "player">();
+  state.participants.forEach((participant) => {
+    const currentRole = roles.get(participant.sessionId);
+    if (participant.role === "host" || !currentRole) {
+      roles.set(participant.sessionId, participant.role);
+    }
+  });
+  return roles;
 }
 
 function snapshotSessionForDelete(session: Session, state: TrackerState): DeletedSessionSnapshot {
@@ -1136,6 +1320,7 @@ function snapshotSessionForDelete(session: Session, state: TrackerState): Delete
     roster: state.roster.filter((entry) => entry.sessionId === session.id),
     participants: state.participants.filter((participant) => participant.sessionId === session.id),
     matches: state.matches.filter((match) => match.sessionId === session.id),
+    activities: state.activities.filter((activity) => activity.sessionId === session.id),
   };
 }
 
@@ -1151,6 +1336,15 @@ function matchResult(score: string | undefined, isPlayerA: boolean): string {
   }
   const playerWon = isPlayerA ? firstScore > secondScore : secondScore > firstScore;
   return playerWon ? "Won" : "Lost";
+}
+
+function inferWinnerIdFromScore(match: Match): string | undefined {
+  if (!match.score) return match.winnerId;
+  const [firstScore, secondScore] = match.score.split(/[-:]/).map((value) => Number(value.trim()));
+  if (!Number.isFinite(firstScore) || !Number.isFinite(secondScore) || firstScore === secondScore) {
+    return match.winnerId;
+  }
+  return firstScore > secondScore ? match.playerAId : match.playerBId;
 }
 
 function uniqueUsersByName(users: User[]): User[] {

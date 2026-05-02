@@ -72,11 +72,39 @@ create table if not exists matches (
 alter table matches add column if not exists is_stake boolean not null default false;
 alter table matches add column if not exists winner_id text references users(id);
 
+create table if not exists session_activities (
+  id text primary key,
+  session_id text not null references sessions(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  type text not null check (type in (
+    'session_created',
+    'session_closed',
+    'player_joined',
+    'player_added',
+    'player_removed',
+    'present_changed',
+    'paid_changed',
+    'billing_method_changed',
+    'court_price_changed',
+    'match_duration_changed',
+    'total_court_time_changed',
+    'match_added',
+    'match_removed',
+    'match_score_updated',
+    'match_stake_changed'
+  )),
+  actor_user_id text references users(id) on delete set null,
+  target_user_id text references users(id) on delete set null,
+  match_id text,
+  metadata jsonb not null default '{}'::jsonb
+);
+
 alter table users enable row level security;
 alter table sessions enable row level security;
 alter table session_roster enable row level security;
 alter table session_participants enable row level security;
 alter table matches enable row level security;
+alter table session_activities enable row level security;
 
 drop policy if exists "Public read users" on users;
 drop policy if exists "Public insert users" on users;
@@ -341,6 +369,25 @@ create policy "Participants can delete matches" on matches for delete using (
   )
 );
 
+drop policy if exists "Participants can read session activities" on session_activities;
+drop policy if exists "Participants can insert session activities" on session_activities;
+create policy "Participants can read session activities" on session_activities for select using (
+  exists (
+    select 1
+    from session_participants
+    where session_participants.session_id = session_activities.session_id
+      and session_participants.user_id = auth.uid()
+  )
+);
+create policy "Participants can insert session activities" on session_activities for insert with check (
+  exists (
+    select 1
+    from session_participants
+    where session_participants.session_id = session_activities.session_id
+      and session_participants.user_id = auth.uid()
+  )
+);
+
 do $$
 begin
   if not exists (
@@ -376,5 +423,12 @@ begin
     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'matches'
   ) then
     alter publication supabase_realtime add table matches;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'session_activities'
+  ) then
+    alter publication supabase_realtime add table session_activities;
   end if;
 end $$;
