@@ -1326,7 +1326,6 @@ label {
 .table-card {
   margin-top: 16px;
   margin-bottom: 20px;
-  padding: 14px;
 }
 
 .share-card {
@@ -1452,8 +1451,9 @@ label {
   grid-template-columns: minmax(0, 0.78fr) minmax(0, 1fr) minmax(0, 1fr);
   height: 100%;
   overflow: hidden;
-  border-radius: 0;
-  background: transparent;
+  border: 1px solid #ded0b6;
+  border-radius: 16px;
+  background: rgba(255, 253, 246, 0.82);
   color: var(--ink);
 }
 
@@ -1462,23 +1462,22 @@ label {
   justify-items: start;
   gap: 8px;
   min-height: 94px;
-  border-right: 0;
-  background: rgba(255, 253, 246, 0.82);
+  background: transparent;
   padding: 17px 13px;
   text-align: left;
 }
 
 .billing-live-metric:first-child {
-  border-radius: 2px 2px 2px 16px;
+  border-right: 1px solid #ded0b6;
+  border-radius: 16px 0 0 16px;
+}
+
+.billing-live-metric:nth-child(2) {
+  border-right: 1px solid #ded0b6;
 }
 
 .billing-live-metric:last-child {
-  border-right: 1px solid #ded0b6;
-  border-radius: 2px;
-}
-
-.billing-live-metric + .billing-live-metric {
-  border-left: 0;
+  border-radius: 0 16px 16px 0;
 }
 
 .billing-live-metric span {
@@ -1531,6 +1530,12 @@ label {
   min-width: 0;
 }
 
+.billing-settings-column {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+}
+
 .billing-setup-column {
   display: grid;
   gap: 0;
@@ -1545,27 +1550,61 @@ label {
   padding: 17px;
 }
 
-.billing-setup-grid .metric-card:nth-child(1) {
-  border-radius: 16px 2px 2px 2px;
+.billing-setup-slot {
+  min-width: 0;
+  display: grid;
 }
 
-.billing-setup-grid .metric-card:nth-child(2) {
-  border-left: 0;
-  border-radius: 2px 16px 2px 2px;
+.billing-setup-slot .metric-card {
+  width: 100%;
 }
 
-.billing-setup-grid .metric-card:nth-child(3),
-.billing-setup-grid .metric-card:nth-child(4),
-.billing-setup-grid .metric-card:nth-child(6) {
+.billing-setup-slot-court {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.billing-setup-slot-shuttle {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.billing-setup-slot-court-time {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.billing-setup-slot-total-matches {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+.billing-setup-slot-match-duration {
+  grid-column: 2;
+  grid-row: 3;
+}
+
+.billing-setup-slot-court .metric-card {
+  border-radius: 16px 16px 2px 2px;
+}
+
+.billing-setup-slot-shuttle .metric-card,
+.billing-setup-slot-court-time .metric-card,
+.billing-setup-slot-total-matches .metric-card,
+.billing-setup-slot-match-duration .metric-card {
   border-top: 0;
 }
 
-.billing-setup-grid .metric-card:nth-child(4),
-.billing-setup-grid .metric-card:nth-child(6) {
+.billing-setup-slot-court-time .metric-card,
+.billing-setup-slot-match-duration .metric-card {
   border-left: 0;
 }
 
-.billing-setup-grid .metric-card:nth-child(6) {
+.billing-setup-slot-total-matches .metric-card {
+  border-radius: 2px 2px 2px 16px;
+}
+
+.billing-setup-slot-match-duration .metric-card {
   border-radius: 2px 2px 16px 2px;
 }
 
@@ -1612,13 +1651,7 @@ label {
 }
 
 .billing-live-cell {
-  grid-column: 1;
-  grid-row: 3;
-}
-
-.billing-live-cell + .metric-card {
-  grid-column: 2;
-  grid-row: 3;
+  width: 100%;
 }
 
 .invite-action-grid {
@@ -2361,7 +2394,6 @@ label {
 }
 
 .leaderboard-card .match-card {
-  box-shadow: 0 8px 24px rgba(44, 34, 18, 0.24);
 }
 
 @media (min-width: 721px) {
@@ -3154,7 +3186,7 @@ label {
   display: block;
   padding: 1px;
   text-decoration: none;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 6px 16px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02), 0 6px 16px rgba(0, 0, 0, 0.06);
   animation: card-pop 260ms ease both;
   transition:
     border-color 180ms ease,
@@ -3167,7 +3199,7 @@ label {
 }
 
 .match-card.scored-card {
-  box-shadow: 0 8px 24px rgba(44, 34, 18, 0.24);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02), 0 6px 16px rgba(0, 0, 0, 0.06);
 }
 
 .match-card:hover {
@@ -3257,7 +3289,9 @@ label {
 }
 
 .match-card.no-score .match-score-side {
-  min-width: 0;
+  min-width: 34px;
+  min-height: 34px;
+  flex: 0 0 34px;
 }
 
 .score-primary {
@@ -3280,6 +3314,11 @@ label {
   line-height: 20px;
   letter-spacing: 0.01em;
   background: var(--panel);
+}
+
+.match-card-footer-link {
+  color: inherit;
+  text-decoration: none;
 }
 
 .match-stake-toggle {
@@ -4152,6 +4191,10 @@ label {
     justify-self: stretch;
   }
 
+  .billing-settings-column {
+    gap: 12px;
+  }
+
   .billing-settings-card {
     min-height: 274px;
     padding: 20px 16px;
@@ -4166,34 +4209,22 @@ label {
   }
 
   .billing-live-cell {
-    order: -2;
-    grid-column: 1 / -1;
-    grid-row: auto;
-  }
-
-  .billing-live-cell + .metric-card {
-    grid-column: auto;
-    grid-row: auto;
+    order: 2;
   }
 
   .billing-live-strip {
     grid-template-columns: minmax(0, 0.78fr) minmax(0, 1fr) minmax(0, 1fr);
+    border-radius: 16px;
   }
 
   .billing-live-metric {
     min-height: 106px;
     padding: 16px 12px;
-    border-radius: 0;
     gap: 8px;
   }
 
   .billing-live-metric:first-child {
-    border-radius: 0;
     padding-inline: 16px;
-  }
-
-  .billing-live-metric:last-child {
-    border-radius: 0;
   }
 
   .billing-live-metric span,
@@ -4223,35 +4254,41 @@ label {
     padding: 16px;
   }
 
-  .billing-setup-grid .metric-card:nth-child(1),
-  .billing-setup-grid .metric-card:nth-child(2),
-  .billing-setup-grid .metric-card:nth-child(3),
-  .billing-setup-grid .metric-card:nth-child(4),
-  .billing-setup-grid .metric-card:nth-child(6) {
+  .billing-setup-slot .metric-card {
     border-radius: 0;
   }
 
-  .billing-setup-grid .metric-card:nth-child(1) {
-    min-height: 152px;
+  .billing-setup-slot-court {
+    grid-column: 1 / -1;
+    grid-row: auto;
     order: 1;
   }
 
-  .billing-setup-grid .metric-card:nth-child(2) {
+  .billing-setup-slot-court .metric-card {
     min-height: 152px;
+  }
+
+  .billing-setup-slot-shuttle {
+    grid-column: auto;
+    grid-row: auto;
     order: 2;
   }
 
-  .billing-setup-grid .metric-card:nth-child(3) {
+  .billing-setup-slot-court-time {
+    grid-column: auto;
+    grid-row: auto;
     order: 3;
   }
 
-  .billing-setup-grid .metric-card:nth-child(4) {
+  .billing-setup-slot-total-matches {
+    grid-column: auto;
+    grid-row: auto;
     order: 4;
   }
 
-  .billing-setup-grid .metric-card:nth-child(6) {
-    min-height: 86px;
-    grid-column: 1 / -1;
+  .billing-setup-slot-match-duration {
+    grid-column: auto;
+    grid-row: auto;
     order: 5;
   }
 
@@ -4390,10 +4427,11 @@ label {
     grid-row: 2;
     width: 100%;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 42px;
+    grid-template-columns: repeat(2, max-content) 42px;
     align-items: center;
     gap: 12px;
     margin-top: 6px;
+    justify-content: start;
     overflow: visible;
     opacity: 1;
     visibility: visible;
@@ -4401,9 +4439,11 @@ label {
 
   .bill-toggles .paid-toggle {
     grid-column: auto;
-    width: 100%;
-    min-width: 0;
-    max-width: none;
+    width: auto;
+    min-width: max-content;
+    max-width: max-content;
+    min-height: 42px;
+    padding: 1px 14px;
     white-space: nowrap;
   }
 

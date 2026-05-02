@@ -107,72 +107,84 @@ export function BillingStats({
   return (
     <>
       <div className="billing-config-row">
-        <div className="billing-settings-column">{settings}</div>
+        <div className="billing-settings-column">
+          {settings}
+          <div className="billing-live-strip billing-live-cell">
+            <LiveMetric label="Matches" value={`${sessionMatches.length}/${formatStatNumber(totalMatchCount)}`} caption="logged" />
+            <LiveMetric label="Collected" value={formatVnd(collected)} caption="paid" />
+            <LiveMetric label="Profit / loss" value={formatVnd(collected - sessionCost)} caption="balance" />
+          </div>
+        </div>
         <div className="billing-setup-column">
           <div className="billing-setup-grid">
-            <CourtPriceMetric
-              isHost={isHost}
-              value={session.courtPrice}
-              captionLabel={session.billingMethod === "casual" ? "Fixed price/match" : "Court share/person"}
-              captionValue={session.billingMethod === "casual" ? fixedPricePerMatch : courtShare}
-              draft={courtPriceDraft}
-              isEditing={isCourtPriceEditing}
-              onDraftChange={setCourtPriceDraft}
-              onEdit={() => setIsCourtPriceEditing(true)}
-              onCancel={() => {
-                setCourtPriceDraft(formatVnd(session.courtPrice));
-                setIsCourtPriceEditing(false);
-              }}
-              onSubmit={submitCourtPrice}
-            />
-            <EditableNumberMetric
-              isHost={isHost}
-              label="Total court time"
-              value={session.totalCourtTime}
-              displayValue={formatMinutesApproxHours(session.totalCourtTime)}
-              draft={totalCourtTimeDraft}
-              isEditing={isTotalCourtTimeEditing}
-              onDraftChange={setTotalCourtTimeDraft}
-              onEdit={() => setIsTotalCourtTimeEditing(true)}
-              onCancel={() => {
-                setTotalCourtTimeDraft(String(session.totalCourtTime));
-                setIsTotalCourtTimeEditing(false);
-              }}
-              onSubmit={submitTotalCourtTime}
-            />
-            <EditableNumberMetric
-              isHost={isHost}
-              label="Total matches"
-              value={totalMatchCount}
-              draft={totalMatchesDraft}
-              isEditing={isTotalMatchesEditing}
-              onDraftChange={setTotalMatchesDraft}
-              onEdit={() => setIsTotalMatchesEditing(true)}
-              onCancel={() => {
-                setTotalMatchesDraft(formatStatNumber(maxMatches(session)));
-                setIsTotalMatchesEditing(false);
-              }}
-              onSubmit={submitTotalMatches}
-            />
-            <MatchDurationMetric
-              isHost={isHost}
-              value={session.matchDuration}
-              draft={matchDurationDraft}
-              isEditing={isMatchDurationEditing}
-              onDraftChange={setMatchDurationDraft}
-              onEdit={() => setIsMatchDurationEditing(true)}
-              onCancel={() => {
-                setMatchDurationDraft(String(session.matchDuration));
-                setIsMatchDurationEditing(false);
-              }}
-              onSubmit={submitMatchDuration}
-            />
-            <div className="billing-live-strip billing-live-cell">
-              <LiveMetric label="Matches" value={`${sessionMatches.length}/${formatStatNumber(totalMatchCount)}`} caption="logged" />
-              <LiveMetric label="Collected" value={formatVnd(collected)} caption="paid" />
-              <LiveMetric label="Profit / loss" value={formatVnd(totalDue - sessionCost)} caption="balance" />
+            <div className="billing-setup-slot billing-setup-slot-court">
+              <CourtPriceMetric
+                isHost={isHost}
+                value={session.courtPrice}
+                captionLabel={session.billingMethod === "casual" ? "Fixed price/match" : "Court share/person"}
+                captionValue={session.billingMethod === "casual" ? fixedPricePerMatch : courtShare}
+                draft={courtPriceDraft}
+                isEditing={isCourtPriceEditing}
+                onDraftChange={setCourtPriceDraft}
+                onEdit={() => setIsCourtPriceEditing(true)}
+                onCancel={() => {
+                  setCourtPriceDraft(formatVnd(session.courtPrice));
+                  setIsCourtPriceEditing(false);
+                }}
+                onSubmit={submitCourtPrice}
+              />
             </div>
-            <Metric label="Shuttle Cost / Match" value={formatVnd(shuttleFee)} />
+            <div className="billing-setup-slot billing-setup-slot-shuttle">
+              <Metric label="Shuttle Cost / Match" value={formatVnd(shuttleFee)} />
+            </div>
+            <div className="billing-setup-slot billing-setup-slot-court-time">
+              <EditableNumberMetric
+                isHost={isHost}
+                label="Total court time"
+                value={session.totalCourtTime}
+                displayValue={formatMinutesApproxHours(session.totalCourtTime)}
+                draft={totalCourtTimeDraft}
+                isEditing={isTotalCourtTimeEditing}
+                onDraftChange={setTotalCourtTimeDraft}
+                onEdit={() => setIsTotalCourtTimeEditing(true)}
+                onCancel={() => {
+                  setTotalCourtTimeDraft(String(session.totalCourtTime));
+                  setIsTotalCourtTimeEditing(false);
+                }}
+                onSubmit={submitTotalCourtTime}
+              />
+            </div>
+            <div className="billing-setup-slot billing-setup-slot-total-matches">
+              <EditableNumberMetric
+                isHost={isHost}
+                label="Total matches"
+                value={totalMatchCount}
+                draft={totalMatchesDraft}
+                isEditing={isTotalMatchesEditing}
+                onDraftChange={setTotalMatchesDraft}
+                onEdit={() => setIsTotalMatchesEditing(true)}
+                onCancel={() => {
+                  setTotalMatchesDraft(formatStatNumber(maxMatches(session)));
+                  setIsTotalMatchesEditing(false);
+                }}
+                onSubmit={submitTotalMatches}
+              />
+            </div>
+            <div className="billing-setup-slot billing-setup-slot-match-duration">
+              <MatchDurationMetric
+                isHost={isHost}
+                value={session.matchDuration}
+                draft={matchDurationDraft}
+                isEditing={isMatchDurationEditing}
+                onDraftChange={setMatchDurationDraft}
+                onEdit={() => setIsMatchDurationEditing(true)}
+                onCancel={() => {
+                  setMatchDurationDraft(String(session.matchDuration));
+                  setIsMatchDurationEditing(false);
+                }}
+                onSubmit={submitMatchDuration}
+              />
+            </div>
           </div>
         </div>
       </div>

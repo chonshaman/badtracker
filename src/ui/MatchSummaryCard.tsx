@@ -144,21 +144,38 @@ export function MatchSummaryCard({
             Add score
           </ActionButton>
         </div>
-        <Link className="match-card-main-link" to={to} state={state} aria-label={`Open report for ${sessionName}`}>
-          <div className="match-card-footer">
-            <span>#{number} - {formatTime(match.createdAt)}</span>
-            {showSessionName || to ? (
-              <span className="match-card-session">
-                {showSessionName ? (
-                  <span className="session-name-with-icon">
-                    <ShuttleIcon className="shuttle-icon" size={16} />
-                    <span>{sessionName}</span>
-                  </span>
-                ) : null}
-                {to ? <ChevronRight size={18} /> : null}
-              </span>
-            ) : null}
-          </div>
+        <Link
+          className="match-card-footer match-card-footer-link"
+          to={to}
+          state={state}
+          aria-label={`Open report for ${sessionName}`}
+        >
+          <span>#{number} - {formatTime(match.createdAt)}</span>
+          {onDelete ? (
+            <button
+              type="button"
+              className="match-delete-button"
+              aria-label={`Delete match #${number}`}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onDelete();
+              }}
+            >
+              <Trash2 size={16} />
+            </button>
+          ) : null}
+          {showSessionName || to ? (
+            <span className="match-card-session">
+              {showSessionName ? (
+                <span className="session-name-with-icon">
+                  <ShuttleIcon className="shuttle-icon" size={16} />
+                  <span>{sessionName}</span>
+                </span>
+              ) : null}
+              {to ? <ChevronRight size={18} /> : null}
+            </span>
+          ) : null}
         </Link>
       </article>
     );
