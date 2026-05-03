@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { formatVnd } from "../../lib/money";
 import { casualUnitPrice, courtSharePerPlayer, maxMatches, shuttleFeePerMatch } from "../../lib/sessionMath";
+import { getPlayerFeeMetric } from "../../lib/selectors";
 import type { Match, Session, TrackerState } from "../../types";
 
 type Store = ReturnType<typeof import("../../lib/store").useTrackerStore>;
@@ -26,15 +27,16 @@ export function BillingStats({
 }) {
   const [isCourtPriceEditing, setIsCourtPriceEditing] = useState(false);
   const [courtPriceDraft, setCourtPriceDraft] = useState(() => formatVnd(session.courtPrice));
+  const [isShuttleSettingsEditing, setIsShuttleSettingsEditing] = useState(false);
+  const [shuttlePriceDraft, setShuttlePriceDraft] = useState(() => formatVnd(session.shuttlePrice));
+  const [shuttlesPerTubeDraft, setShuttlesPerTubeDraft] = useState(() => String(session.shuttlesPerTube));
   const [isMatchDurationEditing, setIsMatchDurationEditing] = useState(false);
   const [matchDurationDraft, setMatchDurationDraft] = useState(() => String(session.matchDuration));
   const [isTotalCourtTimeEditing, setIsTotalCourtTimeEditing] = useState(false);
   const [totalCourtTimeDraft, setTotalCourtTimeDraft] = useState(() => String(session.totalCourtTime));
-  const [isTotalMatchesEditing, setIsTotalMatchesEditing] = useState(false);
-  const [totalMatchesDraft, setTotalMatchesDraft] = useState(() => formatStatNumber(maxMatches(session)));
 
   const courtShare = courtSharePerPlayer(session, state.roster);
-  const fixedPricePerMatch = casualUnitPrice(session, state.matches, state.roster);
+  const fixedPricePerMatch = getPlayerFeeMetric(state, session, state.roster);
   const shuttleFee = shuttleFeePerMatch(session);
   const sessionCost = session.courtPrice + (sessionMatches.length * session.shuttlePrice) / session.shuttlesPerTube;
   const totalMatchCount = maxMatches(session);
@@ -44,16 +46,19 @@ export function BillingStats({
   }, [isCourtPriceEditing, session.courtPrice]);
 
   useEffect(() => {
+    if (!isShuttleSettingsEditing) {
+      setShuttlePriceDraft(formatVnd(session.shuttlePrice));
+      setShuttlesPerTubeDraft(String(session.shuttlesPerTube));
+    }
+  }, [isShuttleSettingsEditing, session.shuttlePrice, session.shuttlesPerTube]);
+
+  useEffect(() => {
     if (!isMatchDurationEditing) setMatchDurationDraft(String(session.matchDuration));
   }, [isMatchDurationEditing, session.matchDuration]);
 
   useEffect(() => {
     if (!isTotalCourtTimeEditing) setTotalCourtTimeDraft(String(session.totalCourtTime));
   }, [isTotalCourtTimeEditing, session.totalCourtTime]);
-
-  useEffect(() => {
-    if (!isTotalMatchesEditing) setTotalMatchesDraft(formatStatNumber(maxMatches(session)));
-  }, [isTotalMatchesEditing, session]);
 
   function submitCourtPrice() {
     const nextCourtPrice = parseCourtMoneyInput(courtPriceDraft);
@@ -65,6 +70,21 @@ export function BillingStats({
     store.updateCourtPrice(session.id, nextCourtPrice);
     setCourtPriceDraft(formatVnd(nextCourtPrice));
     setIsCourtPriceEditing(false);
+  }
+
+  function submitShuttleSettings() {
+    const nextShuttlePrice = parseCourtMoneyInput(shuttlePriceDraft);
+    const nextShuttlesPerTube = Number(shuttlesPerTubeDraft);
+    if (nextShuttlePrice <= 0 || !Number.isFinite(nextShuttlesPerTube) || nextShuttlesPerTube <= 0) {
+      setShuttlePriceDraft(formatVnd(session.shuttlePrice));
+      setShuttlesPerTubeDraft(String(session.shuttlesPerTube));
+      setIsShuttleSettingsEditing(false);
+      return;
+    }
+    store.updateShuttleSettings(session.id, nextShuttlePrice, nextShuttlesPerTube);
+    setShuttlePriceDraft(formatVnd(nextShuttlePrice));
+    setShuttlesPerTubeDraft(String(nextShuttlesPerTube));
+    setIsShuttleSettingsEditing(false);
   }
 
   function submitMatchDuration() {
@@ -91,19 +111,6 @@ export function BillingStats({
     setIsTotalCourtTimeEditing(false);
   }
 
-  function submitTotalMatches() {
-    const nextTotalMatches = Number(totalMatchesDraft);
-    if (!Number.isFinite(nextTotalMatches) || nextTotalMatches <= 0) {
-      setTotalMatchesDraft(formatStatNumber(maxMatches(session)));
-      setIsTotalMatchesEditing(false);
-      return;
-    }
-    const nextMatchDuration = Number((session.totalCourtTime / nextTotalMatches).toFixed(2));
-    store.updateMatchDuration(session.id, nextMatchDuration);
-    setTotalMatchesDraft(formatStatNumber(nextTotalMatches));
-    setIsTotalMatchesEditing(false);
-  }
-
   return (
     <>
       <div className="billing-config-row">
@@ -121,7 +128,7 @@ export function BillingStats({
               <CourtPriceMetric
                 isHost={isHost}
                 value={session.courtPrice}
-                captionLabel={session.billingMethod === "casual" ? "Fixed price/match" : "Court share/person"}
+                captionLabel={session.billingMethod === "casual" ? "Fee/match:" : "Court share/person"}
                 captionValue={session.billingMethod === "casual" ? fixedPricePerMatch : courtShare}
                 draft={courtPriceDraft}
                 isEditing={isCourtPriceEditing}
@@ -135,7 +142,13 @@ export function BillingStats({
               />
             </div>
             <div className="billing-setup-slot billing-setup-slot-shuttle">
-              <Metric label="Shuttle Cost / Match" value={formatVnd(shuttleFee)} />
+              <Metric
+                isHost={isHost}
+                label="Shuttle Cost / Match"
+                value={formatVnd(shuttleFee)}
+                caption={`~Shuttle fee ${formatVnd(shuttleFee / 2)}/player`}
+                onEdit={() => setIsShuttleSettingsEditing(true)}
+              />
             </div>
             <div className="billing-setup-slot billing-setup-slot-court-time">
               <EditableNumberMetric
@@ -155,20 +168,7 @@ export function BillingStats({
               />
             </div>
             <div className="billing-setup-slot billing-setup-slot-total-matches">
-              <EditableNumberMetric
-                isHost={isHost}
-                label="Total matches"
-                value={totalMatchCount}
-                draft={totalMatchesDraft}
-                isEditing={isTotalMatchesEditing}
-                onDraftChange={setTotalMatchesDraft}
-                onEdit={() => setIsTotalMatchesEditing(true)}
-                onCancel={() => {
-                  setTotalMatchesDraft(formatStatNumber(maxMatches(session)));
-                  setIsTotalMatchesEditing(false);
-                }}
-                onSubmit={submitTotalMatches}
-              />
+              <Metric label="Max matches est." value={formatStatNumber(totalMatchCount)} />
             </div>
             <div className="billing-setup-slot billing-setup-slot-match-duration">
               <MatchDurationMetric
@@ -188,6 +188,20 @@ export function BillingStats({
           </div>
         </div>
       </div>
+      {isShuttleSettingsEditing ? (
+        <ShuttleSettingsModal
+          shuttlePriceDraft={shuttlePriceDraft}
+          shuttlesPerTubeDraft={shuttlesPerTubeDraft}
+          onShuttlePriceDraftChange={setShuttlePriceDraft}
+          onShuttlesPerTubeDraftChange={setShuttlesPerTubeDraft}
+          onClose={() => {
+            setShuttlePriceDraft(formatVnd(session.shuttlePrice));
+            setShuttlesPerTubeDraft(String(session.shuttlesPerTube));
+            setIsShuttleSettingsEditing(false);
+          }}
+          onSubmit={submitShuttleSettings}
+        />
+      ) : null}
     </>
   );
 }
@@ -426,12 +440,85 @@ function EditableMinuteMetric({
   );
 }
 
-function Metric({ label, value, caption }: { label: string; value: string; caption?: string }) {
+function Metric({
+  isHost = false,
+  label,
+  value,
+  caption,
+  onEdit,
+}: {
+  isHost?: boolean;
+  label: string;
+  value: string;
+  caption?: string;
+  onEdit?: () => void;
+}) {
   return (
-    <div className="metric-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      {caption ? <small>{caption}</small> : null}
+    <div className="metric-card editable-metric-card">
+      <div className="metric-card-content">
+        <span>{label}</span>
+        <strong>{value}</strong>
+        {caption ? <small>{caption}</small> : null}
+      </div>
+      {isHost && onEdit ? (
+        <button type="button" className="metric-edit-trigger" onClick={onEdit}>
+          Edit
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function ShuttleSettingsModal({
+  shuttlePriceDraft,
+  shuttlesPerTubeDraft,
+  onShuttlePriceDraftChange,
+  onShuttlesPerTubeDraftChange,
+  onClose,
+  onSubmit,
+}: {
+  shuttlePriceDraft: string;
+  shuttlesPerTubeDraft: string;
+  onShuttlePriceDraftChange: (value: string) => void;
+  onShuttlesPerTubeDraftChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Edit shuttle settings">
+      <section className="match-modal shuttle-settings-modal panel">
+        <p className="eyebrow">Billing setup</p>
+        <h2>Shuttle settings</h2>
+        <p className="shuttle-settings-copy">Change shuttle tube price and the number of shuttles in each tube.</p>
+        <form
+          className="form-grid shuttle-settings-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
+          <label className="full-span">
+            <span>Shuttle tube price</span>
+            <input value={shuttlePriceDraft} onChange={(event) => onShuttlePriceDraftChange(event.target.value)} autoFocus />
+          </label>
+          <label className="full-span">
+            <span>Shuttles per tube</span>
+            <input
+              value={shuttlesPerTubeDraft}
+              onChange={(event) => onShuttlesPerTubeDraftChange(event.target.value)}
+              inputMode="numeric"
+            />
+          </label>
+          <div className="modal-action-row full-span">
+            <button type="button" className="secondary-button" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="primary-button">
+              Save
+            </button>
+          </div>
+        </form>
+      </section>
     </div>
   );
 }

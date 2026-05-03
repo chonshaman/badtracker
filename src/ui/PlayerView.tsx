@@ -2,9 +2,12 @@ import { Link } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { formatVnd } from "../lib/money";
 import { formatScorePart, hasRecordedScore } from "../lib/scoreFlow";
-import { casualUnitPrice, playerBills, shuttleFeePerMatch } from "../lib/sessionMath";
+import { useStore } from "../lib/storeContext";
+import { shuttleFeePerMatch } from "../lib/sessionMath";
+import { getSessionBills, getUserBillForSession } from "../lib/selectors";
+import { runViewTransition } from "../lib/viewTransition";
 import type { Match, Session, SessionPublicInfo, TrackerState, User } from "../types";
-import { Check, ChevronDown, ChevronRight, Plus, ShuttleIcon } from "./icons";
+import { Check, ChevronDown, ChevronRight, Copy, Plus, ShuttleIcon } from "./icons";
 import { MatchSummaryCard } from "./MatchSummaryCard";
 import { EditScoreModal, RecordMatchModal } from "./player/MatchModals";
 
@@ -13,11 +16,11 @@ type Store = ReturnType<typeof import("../lib/store").useTrackerStore>;
 type PlayerViewProps = {
   slug: string;
   sessionId?: string;
-  store: Store;
   activeSession?: Session;
 };
 
-export function PlayerView({ slug, sessionId, store, activeSession }: PlayerViewProps) {
+export function PlayerView({ slug, sessionId, activeSession }: PlayerViewProps) {
+  const store = useStore();
   const linkedSession = sessionId ? store.state.sessions.find((session) => session.id === sessionId) : undefined;
   const sessionForPlayer = activeSession ?? linkedSession;
   const playerStorageKey = sessionForPlayer ? `smash-player-${sessionForPlayer.id}` : `smash-player-${slug}`;
@@ -37,6 +40,10 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
   useEffect(() => {
     if (playerId) sessionStorage.setItem(playerStorageKey, playerId);
   }, [playerId, playerStorageKey]);
+
+  const selectPlayerId = (nextPlayerId: string) => {
+    runViewTransition(() => setPlayerId(nextPlayerId));
+  };
 
   useEffect(() => {
     if (!sessionId || !store.isRemoteEnabled) {
@@ -70,7 +77,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
       <ClosedSessionSummary
         session={linkedSession}
         playerId={playerId}
-        onPlayerChange={setPlayerId}
+        onPlayerChange={selectPlayerId}
         store={store}
       />
     );
@@ -150,7 +157,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
         (user) => user.name.trim().toLowerCase() === trimmed.toLowerCase(),
       );
       if (existingUser) {
-        setPlayerId(existingUser.id);
+        selectPlayerId(existingUser.id);
         return;
       }
 
@@ -161,12 +168,12 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
         type: "Temp",
       };
       store.joinSessionGuest(guest, activeSession.id);
-      setPlayerId(guest.id);
+      selectPlayerId(guest.id);
       setGuestName("");
     };
 
     return (
-      <section className="login-card">
+      <section className="login-card player-flow-surface">
         <p className="eyebrow">Active session</p>
         <h1>Who are you?</h1>
         <UserDropdown
@@ -175,7 +182,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
           placeholder="Select your name"
           sessionId={activeSession.id}
           roster={store.state.roster}
-          onChange={setPlayerId}
+          onChange={selectPlayerId}
         />
         <button className="primary-button" disabled={!playerId}>
           Enter court
@@ -222,16 +229,9 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
     )
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const selectedHomeSession = joinedSessions.find((session) => session.id === selectedHomeSessionId) ?? joinedSessions[0] ?? activeSession;
-  const selectedHomeBill = playerBills({
-    session: selectedHomeSession,
-    users: store.state.users,
-    roster: store.state.roster,
-    matches: store.state.matches,
-  }).find((bill) => bill.userIds.includes(currentUser.id));
+  const selectedHomeBill = getUserBillForSession(store.state, selectedHomeSession, currentUser.id);
   const courtFee = selectedHomeBill?.courtShare ?? 0;
-  const playerFeeMetric = selectedHomeSession.billingMethod === "casual"
-    ? casualUnitPrice(selectedHomeSession, store.state.matches, store.state.roster)
-    : courtFee;
+  const playerFeeMetric = selectedHomeSession.billingMethod === "casual" ? selectedHomeBill?.courtShare ?? 0 : courtFee;
   const totalDue = selectedHomeBill?.totalDue ?? 0;
   const selectedShuttleCostPerMatch = shuttleFeePerMatch(selectedHomeSession);
   const playerReturnPath = `/${activeSession.slug}/session/${activeSession.id}`;
@@ -246,7 +246,7 @@ export function PlayerView({ slug, sessionId, store, activeSession }: PlayerView
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return (
-    <div className="player-screen">
+    <div className="player-screen player-flow-surface">
       <PlayerDebtHeader
         session={selectedHomeSession}
         sessions={joinedSessions}
@@ -380,47 +380,153 @@ function ClosedSessionSummary({
   onPlayerChange: (playerId: string) => void;
   store: Store;
 }) {
+  const [copiedField, setCopiedField] = useState<"bankAccount" | "bankName" | null>(null);
   const rosterIds = store.state.roster
     .filter((entry) => entry.sessionId === session.id)
     .map((entry) => entry.userId);
   const roster = usersForRosterIds(store.state.users, rosterIds);
   const currentUser = roster.find((user) => user.id === playerId);
+  const hostEntry = store.state.roster.find((entry) => entry.sessionId === session.id && entry.isHost);
+  const hostName = hostEntry ? store.state.users.find((user) => user.id === hostEntry.userId)?.name : undefined;
+  const sessionMatches = store.state.matches.filter((match) => match.sessionId === session.id);
   const bill = currentUser
-    ? playerBills({
-        session,
-        users: store.state.users,
-        roster: store.state.roster,
-        matches: store.state.matches,
-      }).find((candidate) => candidate.userIds.includes(currentUser.id))
+    ? getUserBillForSession(store.state, session, currentUser.id)
     : undefined;
-  const playerFeeMetric = session.billingMethod === "casual"
-    ? casualUnitPrice(session, store.state.matches, store.state.roster)
-    : bill?.courtShare ?? 0;
+  const opponentCount = currentUser
+    ? new Set(
+        sessionMatches.flatMap((match) => {
+          if (match.playerAId === currentUser.id) return [match.playerBId];
+          if (match.playerBId === currentUser.id) return [match.playerAId];
+          return [];
+        }),
+      ).size
+    : 0;
+
+  async function copyPaymentField(value: string, field: "bankAccount" | "bankName") {
+    await navigator.clipboard.writeText(value);
+    setCopiedField(field);
+    window.setTimeout(() => setCopiedField((current) => (current === field ? null : current)), 1800);
+  }
 
   return (
-    <section className="player-empty closed-session-summary">
-      <p className="eyebrow">Session closed</p>
-      <h1>{currentUser ? formatVnd(bill?.totalDue ?? 0) : "Final report ready."}</h1>
-      {currentUser ? (
-        <div className="closed-session-meta">
-          <span>Hi, {currentUser.name}</span>
-          <span>{bill?.matchesPlayed ?? 0} {(bill?.matchesPlayed ?? 0) === 1 ? "match" : "matches"} played</span>
-          <span>{playerFeeLabel(session)}: {formatVnd(playerFeeMetric)}</span>
+    <section className="closed-session-summary-card">
+      <div className="closed-session-overview-card">
+        <div className="closed-session-top">
+          <p className="eyebrow">Session ended</p>
+          <p className="closed-session-status">
+            <span className="closed-session-name">“{sessionTitle(session)}”</span> is now closed.
+          </p>
         </div>
-      ) : roster.length > 0 ? (
-        <UserDropdown
-          users={roster}
-          value={playerId}
-          placeholder="Select your name"
-          onChange={onPlayerChange}
-        />
-      ) : (
-        <p>This session has ended. The final report is still available.</p>
-      )}
-      <Link className="primary-button" to={`/${session.slug}/admin/${session.id}`} state={{ backTo: `/${session.slug}`, playerId }}>
-        View report
-      </Link>
+
+        <div className="closed-session-summary-block">
+          {currentUser ? (
+            <>
+              <h1>Hi {currentUser.name},</h1>
+              <p className="closed-session-summary-copy">
+                You played <strong>{bill?.matchesPlayed ?? 0} {(bill?.matchesPlayed ?? 0) === 1 ? "match" : "matches"}</strong> today with{" "}
+                <strong>{opponentCount} {opponentCount === 1 ? "opponent" : "opponents"}</strong>.
+              </p>
+              <Link
+                className="closed-session-report-link"
+                to={`/${session.slug}/admin/${session.id}`}
+                state={{ backTo: `/${session.slug}`, playerId }}
+              >
+                <span>View session report</span>
+                <ChevronRight size={18} />
+              </Link>
+              <div className="closed-session-total-row">
+                <span>Total fee:</span>
+                <strong>{formatVnd(bill?.totalDue ?? 0)}</strong>
+              </div>
+            </>
+          ) : roster.length > 0 ? (
+            <>
+              <h1>Session wrapped up.</h1>
+              <p className="closed-session-summary-copy">Pick your name to see your final total and payment details.</p>
+              <UserDropdown
+                users={roster}
+                value={playerId}
+                placeholder="Select your name"
+                onChange={onPlayerChange}
+              />
+              <Link
+                className="closed-session-report-link"
+                to={`/${session.slug}/admin/${session.id}`}
+                state={{ backTo: `/${session.slug}`, playerId }}
+              >
+                <span>View session report</span>
+                <ChevronRight size={18} />
+              </Link>
+            </>
+          ) : (
+            <>
+              <h1>Session wrapped up.</h1>
+              <p className="closed-session-summary-copy">The final report is ready, and payment details will appear here once your host adds them.</p>
+              <Link
+                className="closed-session-report-link"
+                to={`/${session.slug}/admin/${session.id}`}
+                state={{ backTo: `/${session.slug}`, playerId }}
+              >
+                <span>View session report</span>
+                <ChevronRight size={18} />
+              </Link>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="closed-session-payment-card">
+        <div className="closed-session-payment-fields">
+          <CopyPaymentField
+            label="Bank account:"
+            value={session.paymentBankAccount}
+            copied={copiedField === "bankAccount"}
+            onCopy={() => session.paymentBankAccount ? copyPaymentField(session.paymentBankAccount, "bankAccount") : undefined}
+          />
+          <CopyPaymentField
+            label="Bank name:"
+            value={session.paymentBankName}
+            copied={copiedField === "bankName"}
+            onCopy={() => session.paymentBankName ? copyPaymentField(session.paymentBankName, "bankName") : undefined}
+          />
+        </div>
+        {session.paymentQrCodeUrl ? (
+          <div className="closed-session-payment-qr-frame">
+            <img className="closed-session-payment-qr" src={session.paymentQrCodeUrl} alt="Payment QR code" />
+          </div>
+        ) : (
+          <div className="closed-session-payment-qr-frame closed-session-payment-qr-empty">
+            <span>QR code will appear here</span>
+          </div>
+        )}
+        <p className="closed-session-payment-note">
+          Please settle up with <strong>@{hostName ?? "host"}</strong> to keep the court lights burning! Thanks! 🙏
+        </p>
+      </div>
     </section>
+  );
+}
+
+function CopyPaymentField({
+  label,
+  value,
+  copied,
+  onCopy,
+}: {
+  label: string;
+  value?: string;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="closed-session-payment-field">
+      <span>{label}</span>
+      <button type="button" className="closed-session-payment-copy" onClick={onCopy} disabled={!value}>
+        <span>{value ?? "Your host will add this soon"}</span>
+        <Copy size={18} />
+        {copied ? <em className="copy-tooltip inline-copy-tooltip">Copied</em> : null}
+      </button>
+    </div>
   );
 }
 
@@ -472,9 +578,8 @@ function PlayerDebtHeader({
       <div className="debt-breakdown" aria-label="Debt breakdown">
         <span>
           {playerFeeLabel(session)}: {formatVnd(playerFeeMetric)}
-          {session.billingMethod === "casual" ? "/match" : ""}
         </span>
-        <span>Shuttle cost: {formatVnd(shuttleCostPerMatch)}/match</span>
+        <span>Shuttle/match: {formatVnd(shuttleCostPerMatch)}</span>
       </div>
       <HomeSessionDropdown
         sessions={sessions}
@@ -577,12 +682,9 @@ function PreviousSessions({
     <section className="previous-sessions">
       <h2>Previous sessions</h2>
       {sessions.map((session) => {
-        const bill = playerBills({
-          session,
-          users: store.state.users,
-          roster: store.state.roster,
-          matches: store.state.matches,
-        }).find((candidate) => candidate.userIds.some((userId) => currentUserIds.includes(userId)));
+        const bill = getSessionBills(store.state, session).find((candidate) =>
+          candidate.userIds.some((userId) => currentUserIds.includes(userId)),
+        );
 
         return (
           <Link className="previous-session-card" key={session.id} to={`/${session.slug}/admin/${session.id}`} state={{ backTo, playerId }}>
@@ -876,8 +978,8 @@ export function PlayerBillingCard({
         </span>
         <strong className="player-billing-summary">
           {isCasual
-            ? `Fixed fee: ${formatVnd(playerFeeMetric)}/match`
-            : `Court share: ${formatVnd(playerFeeMetric)} + Shuttle: ${formatVnd(shuttleCostPerMatch)}/match`}
+            ? `Fee/match: ${formatVnd(playerFeeMetric)}`
+            : `Court share: ${formatVnd(playerFeeMetric)} + Shuttle/match: ${formatVnd(shuttleCostPerMatch)}`}
         </strong>
       </div>
     </section>
@@ -933,7 +1035,7 @@ function sessionTitle(session: Session): string {
 }
 
 function playerFeeLabel(session: Session): string {
-  return session.billingMethod === "casual" ? "Match Price" : "Court share";
+  return session.billingMethod === "casual" ? "Fee/match" : "Court share";
 }
 
 function isSessionHost(roster: { sessionId: string; userId: string; isHost?: boolean }[], sessionId: string, userId: string): boolean {
@@ -969,4 +1071,5 @@ function usersForRosterIds(users: User[], rosterIds: string[]): User[] {
     .map((userId) => users.find((user) => user.id === userId))
     .filter((user): user is User => Boolean(user));
 }
+
 

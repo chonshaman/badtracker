@@ -11,6 +11,9 @@ create table if not exists sessions (
   host_user_id uuid default auth.uid() references auth.users(id) on delete set null,
   name text,
   pin_code text,
+  payment_bank_account text,
+  payment_bank_name text,
+  payment_qr_code_url text,
   date text not null,
   court_price integer not null,
   shuttle_price integer not null,
@@ -26,6 +29,9 @@ create table if not exists sessions (
 alter table sessions add column if not exists host_user_id uuid default auth.uid() references auth.users(id) on delete set null;
 alter table sessions add column if not exists name text;
 alter table sessions add column if not exists pin_code text;
+alter table sessions add column if not exists payment_bank_account text;
+alter table sessions add column if not exists payment_bank_name text;
+alter table sessions add column if not exists payment_qr_code_url text;
 alter table sessions add column if not exists billing_method varchar(20) not null default 'standard' check (billing_method in ('standard', 'casual'));
 alter table sessions drop column if exists fee_per_person;
 

@@ -48,7 +48,6 @@ export function AppShell() {
               {mode === "admin" ? (
                 <AdminView
                   slug={slug}
-                  store={store}
                   initialSessionId={reportSessionId}
                   initialCreate={shouldCreateSession}
                   detailBackTo={detailBackTo}
@@ -56,7 +55,7 @@ export function AppShell() {
                   detailHighlightMatchId={detailHighlightMatchId}
                 />
               ) : (
-                <PlayerView slug={slug} sessionId={sessionId} store={store} activeSession={activeSession} />
+                <PlayerView slug={slug} sessionId={sessionId} activeSession={activeSession} />
               )}
             </Suspense>
           </div>

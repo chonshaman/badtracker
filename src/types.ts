@@ -25,6 +25,9 @@ export type Session = {
   slug: string;
   name?: string;
   pinCode?: string;
+  paymentBankAccount?: string;
+  paymentBankName?: string;
+  paymentQrCodeUrl?: string;
   date: string;
   courtPrice: number;
   shuttlePrice: number;
@@ -80,6 +83,7 @@ export type SessionActivityType =
   | "paid_changed"
   | "billing_method_changed"
   | "court_price_changed"
+  | "shuttle_settings_changed"
   | "match_duration_changed"
   | "total_court_time_changed"
   | "match_added"

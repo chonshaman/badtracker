@@ -3,7 +3,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { presets } from "../data/defaults";
 import { formatVnd, parseMoneyInput } from "../lib/money";
+import { useStore } from "../lib/storeContext";
+import { getBillingSummaryText, getPlayerFeeMetric, getSessionBills, getSessionCollected, getSessionMatches, getSessionTotalDue } from "../lib/selectors";
 import type { DeletedSessionSnapshot } from "../lib/store";
+import { runViewTransition } from "../lib/viewTransition";
 import { ArrowLeft, Check, ChevronDown, ChevronRight, Download, Info, Plus, ShuttleIcon, Trash2, X } from "./icons";
 import {
   activeRosterCount,
@@ -23,7 +26,6 @@ type Store = ReturnType<typeof import("../lib/store").useTrackerStore>;
 
 type AdminViewProps = {
   slug: string;
-  store: Store;
   initialSessionId?: string;
   initialCreate?: boolean;
   detailBackTo?: string;
@@ -51,17 +53,9 @@ const setupMockUsers: User[] = [
   { id: "u-linh", name: "Linh", role: "Player", type: "Regular" },
 ];
 
-type ViewTransitionDocument = Document & {
-  startViewTransition?: (callback: () => void) => { finished: Promise<void> };
-};
-
-function runViewTransition(update: () => void) {
-  const transition = (document as ViewTransitionDocument).startViewTransition?.(update);
-  if (!transition) update();
-}
-
-export function AdminView({ slug, store, initialSessionId, initialCreate = false, detailBackTo, detailPlayerId, detailHighlightMatchId }: AdminViewProps) {
+export function AdminView({ slug, initialSessionId, initialCreate = false, detailBackTo, detailPlayerId, detailHighlightMatchId }: AdminViewProps) {
   const navigate = useNavigate();
+  const store = useStore();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(initialSessionId ?? null);
   const [isCreating, setIsCreating] = useState(initialCreate);
   const [transitionDirection, setTransitionDirection] = useState<"to-detail" | "to-list">("to-detail");
@@ -181,7 +175,6 @@ export function AdminView({ slug, store, initialSessionId, initialCreate = false
       {isCreating ? (
         <SessionSetup
           slug={slug}
-          store={store}
           onCancel={() => setIsCreating(false)}
           onSessionCreated={handleSessionCreated}
         />
@@ -313,13 +306,14 @@ function SessionList({
 
 function SessionSetup({
   slug,
-  store,
   onCancel,
   onSessionCreated,
-}: AdminViewProps & {
+}: {
+  slug: string;
   onCancel: () => void;
   onSessionCreated: (sessionId: string) => void;
 }) {
+  const store = useStore();
   const [step, setStep] = useState(1);
   const [sessionName, setSessionName] = useState(() => `Session ${new Date().toISOString().slice(0, 10)}`);
   const [selectedPreset, setSelectedPreset] = useState(initialPreset.id);
@@ -649,21 +643,12 @@ function ActiveSessionDashboard({
         (entry) => !(entry.sessionId === session.id && pendingRemovedPlayerIds.includes(entry.userId)),
       )
     : store.state.roster;
-  const bills = playerBills({
-    session,
-    users: store.state.users,
-    roster: previewRoster,
-    matches: store.state.matches,
-  });
-  const sessionMatches = store.state.matches
-    .filter((match) => match.sessionId === session.id)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const bills = getSessionBills(store.state, session, previewRoster);
+  const sessionMatches = getSessionMatches(store.state, session.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const sessionActivities = buildMasterLogEntries(session, store.state, sessionMatches);
-  const totalDue = bills.reduce((sum, bill) => sum + bill.totalDue, 0);
-  const collected = bills.filter((bill) => bill.paid).reduce((sum, bill) => sum + bill.totalDue, 0);
-  const currentPlayerFeeMetric = session.billingMethod === "casual"
-    ? casualUnitPrice(session, store.state.matches, previewRoster)
-    : courtSharePerPlayer(session, previewRoster);
+  const totalDue = getSessionTotalDue(store.state, session, previewRoster);
+  const collected = getSessionCollected(store.state, session, previewRoster);
+  const currentPlayerFeeMetric = getPlayerFeeMetric(store.state, session, previewRoster);
 
   return (
     <section className="panel report-detail-panel">
@@ -708,7 +693,7 @@ function ActiveSessionDashboard({
               <BillingSettings
                 isHost={isHost}
                 method={session.billingMethod ?? "standard"}
-                summary={billingMethodSummary(session, store.state, previewRoster)}
+                summary={getBillingSummaryText(store.state, session, previewRoster)}
                 onChange={(billingMethod) => store.updateBillingMethod(session.id, billingMethod)}
               />
             ) : (
@@ -1294,13 +1279,6 @@ function billingMethodDescription(method: BillingMethod): string {
   return method === "casual"
     ? "All court and shuttle costs are pooled, then split by each player match."
     : "Court is split by present players. Shuttle is split only by players in each match.";
-}
-
-function billingMethodSummary(session: Session, state: TrackerState, roster: RosterEntry[]): string {
-  if (session.billingMethod === "casual") {
-    return `Fixed fee: ${formatVnd(casualUnitPrice(session, state.matches, roster))}/match`;
-  }
-  return `Court share: ${formatVnd(courtSharePerPlayer(session, roster))} + Shuttle: ${formatVnd(shuttleFeePerMatch(session))}/match`;
 }
 
 function participantSessionRoles(state: TrackerState): Map<string, "host" | "player"> {

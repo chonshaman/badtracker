@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatVnd } from "../../lib/money";
 import { activeRosterCount, casualUnitPrice, courtSharePerPlayer, playerBills } from "../../lib/sessionMath";
+import { getSessionBills } from "../../lib/selectors";
 import type { Match, Session, TrackerState, User } from "../../types";
 import { ChevronDown, ChevronUp, Plus, RefreshIcon, Trash2 } from "../icons";
 import { MatchSummaryCard } from "../MatchSummaryCard";
@@ -32,12 +33,7 @@ export function ParticipantPanel({
   const removePlayerTimersRef = useRef<Record<string, number>>({});
   const collapsePlayerTimersRef = useRef<Record<string, number>>({});
   const autoExpandedPlayerRef = useRef<string | undefined>(undefined);
-  const playerBillsForSession = playerBills({
-    session,
-    users: store.state.users,
-    roster: store.state.roster,
-    matches: store.state.matches,
-  });
+  const playerBillsForSession = getSessionBills(store.state, session);
   const statsRoster = pendingRemovedPlayerIds.length > 0
     ? store.state.roster.filter(
         (entry) => !(entry.sessionId === session.id && pendingRemovedPlayerIds.includes(entry.userId)),
@@ -313,7 +309,7 @@ function PlayerMatchHistory({
           const opponentId = match.playerAId === player.id ? match.playerBId : match.playerAId;
           const opponent = state.users.find((user) => user.id === opponentId);
           return (
-            <MatchSummaryCard
+            <RemovableMatchHistoryCard
               match={match}
               number={playerMatches.length - index}
               sessionName={sessionTitle(session)}
@@ -332,6 +328,109 @@ function PlayerMatchHistory({
             />
           );
         })
+      )}
+    </div>
+  );
+}
+
+function RemovableMatchHistoryCard({
+  match,
+  number,
+  sessionName,
+  currentPlayerId,
+  currentPlayerName,
+  opponentName,
+  isCurrentPlayerHost,
+  isOpponentHost,
+  showSessionName,
+  canToggleStake,
+  onToggleStake,
+  onDelete,
+  id,
+  isHighlighted,
+}: {
+  match: Match;
+  number: number;
+  sessionName: string;
+  currentPlayerId: string;
+  currentPlayerName: string;
+  opponentName: string;
+  isCurrentPlayerHost?: boolean;
+  isOpponentHost?: boolean;
+  showSessionName?: boolean;
+  canToggleStake: boolean;
+  onToggleStake: () => void;
+  onDelete?: () => void;
+  id?: string;
+  isHighlighted?: boolean;
+}) {
+  const [isPendingRemoval, setIsPendingRemoval] = useState(false);
+  const [isCollapsingRemoval, setIsCollapsingRemoval] = useState(false);
+  const removeTimerRef = useRef<number | null>(null);
+  const collapseTimerRef = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (removeTimerRef.current) window.clearTimeout(removeTimerRef.current);
+      if (collapseTimerRef.current) window.clearTimeout(collapseTimerRef.current);
+    },
+    [],
+  );
+
+  function scheduleRemoveMatch() {
+    if (!onDelete || isPendingRemoval) return;
+    setIsPendingRemoval(true);
+    removeTimerRef.current = window.setTimeout(() => {
+      removeTimerRef.current = null;
+      setIsCollapsingRemoval(true);
+      collapseTimerRef.current = window.setTimeout(() => {
+        onDelete();
+        collapseTimerRef.current = null;
+      }, 240);
+    }, 5000);
+  }
+
+  function undoRemoveMatch() {
+    if (removeTimerRef.current) window.clearTimeout(removeTimerRef.current);
+    if (collapseTimerRef.current) window.clearTimeout(collapseTimerRef.current);
+    removeTimerRef.current = null;
+    collapseTimerRef.current = null;
+    setIsPendingRemoval(false);
+    setIsCollapsingRemoval(false);
+  }
+
+  return (
+    <div
+      className={[
+        "match-history-card-shell",
+        isPendingRemoval ? "pending-removal" : "",
+        isCollapsingRemoval ? "collapsing-removal" : "",
+      ].filter(Boolean).join(" ")}
+    >
+      {isPendingRemoval ? (
+        <div className="participant-remove-notice match-remove-notice">
+          <span>Match #{number} has removed.</span>
+          <button type="button" onClick={undoRemoveMatch}>
+            Undo
+          </button>
+        </div>
+      ) : (
+        <MatchSummaryCard
+          match={match}
+          number={number}
+          sessionName={sessionName}
+          currentPlayerId={currentPlayerId}
+          currentPlayerName={currentPlayerName}
+          opponentName={opponentName}
+          isCurrentPlayerHost={isCurrentPlayerHost}
+          isOpponentHost={isOpponentHost}
+          showSessionName={showSessionName}
+          canToggleStake={canToggleStake}
+          onToggleStake={onToggleStake}
+          onDelete={onDelete ? scheduleRemoveMatch : undefined}
+          id={id}
+          isHighlighted={isHighlighted}
+        />
       )}
     </div>
   );

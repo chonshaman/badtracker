@@ -30,6 +30,9 @@ type RemoteSession = {
   slug: string;
   name?: string | null;
   pin_code?: string | null;
+  payment_bank_account?: string | null;
+  payment_bank_name?: string | null;
+  payment_qr_code_url?: string | null;
   date: string;
   court_price: number;
   shuttle_price: number;
@@ -338,6 +341,16 @@ export async function remoteUpdateCourtPrice(sessionId: string, courtPrice: numb
   });
 }
 
+export async function remoteUpdateShuttleSettings(sessionId: string, shuttlePrice: number, shuttlesPerTube: number) {
+  await request(`sessions?id=eq.${encodeURIComponent(sessionId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      shuttle_price: shuttlePrice,
+      shuttles_per_tube: shuttlesPerTube,
+    }),
+  });
+}
+
 export async function remoteUpdateMatchDuration(sessionId: string, matchDuration: number) {
   await request(`sessions?id=eq.${encodeURIComponent(sessionId)}`, {
     method: "PATCH",
@@ -438,6 +451,9 @@ function fromRemoteSession(session: RemoteSession): Session {
     slug: session.slug,
     name: session.name ?? undefined,
     pinCode: session.pin_code ?? undefined,
+    paymentBankAccount: session.payment_bank_account ?? undefined,
+    paymentBankName: session.payment_bank_name ?? undefined,
+    paymentQrCodeUrl: session.payment_qr_code_url ?? undefined,
     date: session.date,
     courtPrice: session.court_price,
     shuttlePrice: session.shuttle_price,
@@ -457,6 +473,9 @@ function toRemoteSession(session: Session, includeName = true): RemoteSession {
     slug: session.slug,
     name: includeName ? session.name : undefined,
     pin_code: includeName ? session.pinCode : undefined,
+    payment_bank_account: includeName ? session.paymentBankAccount : undefined,
+    payment_bank_name: includeName ? session.paymentBankName : undefined,
+    payment_qr_code_url: includeName ? session.paymentQrCodeUrl : undefined,
     date: session.date,
     court_price: session.courtPrice,
     shuttle_price: session.shuttlePrice,
@@ -471,6 +490,9 @@ function toRemoteSession(session: Session, includeName = true): RemoteSession {
   if (!includeName) {
     delete remoteSession.name;
     delete remoteSession.pin_code;
+    delete remoteSession.payment_bank_account;
+    delete remoteSession.payment_bank_name;
+    delete remoteSession.payment_qr_code_url;
     delete remoteSession.billing_method;
   }
   return remoteSession;
